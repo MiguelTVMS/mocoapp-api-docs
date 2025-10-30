@@ -291,7 +291,7 @@ paths:
                       total: 1000
                       description: salaries
       operationId: postPurchasesPaymentsBulkPurchasePayments
-  purchases/payments/{id}:
+  /purchases/payments/{id}:
     put:
       summary: "PUT purchases/payments/{id}"
       description: "Update a purchase payment:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/purchases/payments/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"total\": 2000\n      }'\n```\n\nFields are analogous to the POST request, except for the `purchase_id`."

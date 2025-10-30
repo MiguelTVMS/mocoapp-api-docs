@@ -1,0 +1,611 @@
+openapi: 3.1.0
+info:
+  title: Invoices API
+  version: 1.0.0
+  description: "German: \"Rechnungen\"\n\n- TOC\n\n## General\n- Request payloads to MOCO must be sent as valid JSON with a mandatory `Content-Type: application/json`-header. Responses are also sent as JSON.\n- All requests have to be [authenticated](authentication) with a key\n- Example responses showcase the happy case, i.e. usually the `200 OK` response\n- Collections are usually [paginated](#pagination)\n- Zapier triggers are **not** triggered for API requests\n- Timestamps `created_at` and `updated_at` are sent for all entities in UTC, as ISO8601 format.\n- For synchronization almost all resources can be filtered by `updated_after` passing a time in UTC, as ISO8601 format.\n- MOCO does not support any client-libraries at the moment. However, there are currently the following unofficial clients available, which you can use at your risk: [Python Client](https://github.com/sommalia/moco-wrapper)\n\n## Entities\nAll the entities exposed via the API can be found in their [respective sections](entities.md)\n\n## Client Implementations / API Wrappers\nHere's a list of API client implementations, not maintained by us. Feel free to open up a PR to point to your implementation so others can re-use it.\n\n| Language |                Repository                                                                            |\n| :------: | :-------------------------------------------------------------------------------------------------:  |\n| Python   | [https://github.com/sommalia/moco-wrapper](https://github.com/sommalia/moco-wrapper)                 |\n| PHP      | [https://github.com/mbs-hub/moco-php](https://github.com/mbs-hub/moco-php)                           |\n| Ruby     | [https://github.com/starsong-consulting/moco-ruby](https://github.com/starsong-consulting/moco-ruby) |\n\n## Impersonation\nBy default all requests are scoped to the authenticated user. Some resources cannot be provided with a `user_id` or similar, like `Activities` and `User Presences`. This reflects the behaviour in the UI, since every user can only create their own activities or presences. But you can login as another user provided that the authenticated user has permission to _Staff_. To achieve the same behaviour in the API, one can set the following x-header:\n\n`X-IMPERSONATE-USER-ID=123` (user id to act in behalf of)\n\n## Rate Limiting\nYou can expect to be able to send 120 requests per 2 minutes (~ 1 request per second). For the unlimited plan, its 1200 requests per 2 minutes (~ 10 per second). If you exceed this limit, the server responds with `429 Too Many Requests`.\n\n## Pagination\nResponses are paginated with a common default of 100 entries per page. In the HTTP response header, the current page, the entries per page and the number of total entries is reported. There is also a link header to links to the consecutive page.\n\n- **X-Page** \u2013 3\n- **X-Per-Page** \u2013 100\n- **X-Total** \u2013 415\n- **Link** \u2013 `<https://{domain}.mocoapp.com/api/v1/projects.json?page=4>; rel=\"next\"`\n\nIf there is not Link header with `rel=\"next\"`, the current page is the last page.\n\n## Errors and HTTP status codes\nThe MOCO-API is mostly conformant with the [general HTTP status codes](https://en.wikipedia.org/wiki/List_of_HTTP_status_codes).\n\nHere are the most comment errors you will see:\n\n- **401 Unauthorized** - Check the error message in the response body\n- **403 Forbidden** - Check your [Authentication](#authentication) or your MOCO user permission\n- **404 Not Found** - Check that resource exists (maybe it was deleted in the meantime)\n- **422 Unprocessable Entity** - Check the provided error message in the response body\n- **429 Too Many Requests** - Check [Rate Limiting](#rate-limiting)\n\nSorting is controlled by the `sort_by` query parameter. Its value is the field name that should be sorted, followed by an optional sorting order (`asc` or `desc`, default is `asc`).\n\nExample:\n\n- `https://{domain}.mocoapp.com/api/v1/offers?sort_by=title desc`"
+servers:
+  -
+    url: "https://{domain}.mocoapp.com/api/v1"
+    description: Base server URL for the MOCO API.
+tags:
+  -
+    name: Invoices
+    description: "German: \"Rechnungen\"\n\n- TOC"
+components:
+  securitySchemes:
+    TokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: "There's two ways to authenticate against MOCO:\n\n1. **User API key**. Can be found under the \"Integrations\" tab on the profile page.\n2. **Account API key**. Has to be created in Settings > Extensions > API & Webhooks, with either read-only or full access on all endpoints.\n\nBoth kinds of keys are provided as an Authorization header.\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/projects.json' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis key can also be requested via API for user-specific keys:\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/session \\\n  -H 'Accept: application/json' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"email\": \"max@muster.de\",\n    \"password\": \"secret\"\n  }'\n```\n\nIt's also possible to verify if the API key is still valid:\n\n```bash\ncurl https://{domain}.mocoapp.com/api/v1/session \\\n  -H 'Accept: application/json' \\\n  -H 'Content-Type: application/json'\n```\n\nIf the key is valid, the response code id `200 ok` and the body is:\n\n```json\n{\n  \"id\": 123,\n  \"uuid\": \"aec324a2-4832-11eb-b378-0242ac130002\"\n}\n```\n\notherwise the response code is `401 unauthorized`.\nThere are a few tools to try out the MOCO API. All the examples in this documentation use `curl` to demonstrate the API endpoint.\nA popular graphical UI for REST is [Postman](https://www.postman.com/). Here's an example request for the projects list including the authentication:\n\n![Postman example request](moco-api-postman.png \"Postman example request\")"
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: Pagination support as described in the general documentation.
+      schema:
+        type: integer
+        minimum: 1
+    PerPage:
+      name: per_page
+      in: query
+      description: Number of items per page for paginated responses.
+      schema:
+        type: integer
+        minimum: 1
+    SortBy:
+      name: sort_by
+      in: query
+      description: Sorting is controlled by the `sort_by` query parameter. Provide the field name and optional order (asc or desc).
+      schema:
+        type: string
+    Ids:
+      name: ids
+      in: query
+      description: "Usage: `GET /api/v1/entities?ids=123,456`\n\nAllows you to filter by comma-separated IDs and fetch multiple entities."
+      schema:
+        type: string
+    UpdatedAfter:
+      name: updated_after
+      in: query
+      description: "Usage: `GET /api/v1/entities?updated_after=2022-04-20T09:17:58Z` (ISO8601 timestamp)\n\nEnables you to give a timestamp for all entities that are created or updated after this timestamp, especially useful for synchronisation purposes.\n\nCombine it with a [webhook subscription](webhooks) on DELETE for the entity to have a complete synchronisation."
+      schema:
+        type: string
+        format: "date-time"
+    CustomProperties:
+      name: custom_properties
+      in: query
+      description: "Allows you to filter entities by one or more custom fields. The filter for the custom fields is passed via the query-parameter `custom_properties`. To query entities that contain the value \"Automotive\" in a custom field named \"Sector\", the query would need to be as follows:\n\n`GET /api/v1/entities?custom_properties[Sector]=Automotive`\n\nFiltering by an unknown custom field will result in an empty result set!"
+      schema:
+        type: object
+        additionalProperties: true
+      style: deepObject
+      explode: true
+  schemas:
+    ErrorResponse:
+      type: object
+      description: Generic error response body.
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      additionalProperties: true
+    Invoices:
+      type: object
+      description: "The invoice representation contains among standard fields also:\n\n- custom properties\n- positions (items)\n  - type: `title`, `description`, `item`, `subtotal`, `page-break` or `separator`\n  - subtotal_type: `part_total` or `sub_total` (only relevant if type is `subtotal`)\n  - title: A label\n  - description: A description block below that is attachted to this position\n  - quantity: for detail positions, the multiplier for this position\n  - unit: a label for the unit, e.g. \"pieces\", \"hours\", \"days\"\n  - unit_price: price per unit\n  - net_total: total price for position\n  - additional: signifies that this is an expense (`true` / `false`)\n  - for expense positions, it includes:\n    - expense_ids: [1234, 5678] (IDs of expenses that were billed with this position)\n  - service_type (\"service\" for regular items, \"expense\" for additional services)\n- payments\n- reminders\n- user\n- `vat` (`tax`, `reverse_charge`, `intra_eu` (intra community trade, only applicable for accounts in the EU))\n- `activity_hours_modified` (shows whether any positions have been modified and do correspond to the timesheet)\n\n```json\n{\n  \"id\": 80547,\n  \"customer_id\": 760269602,\n  \"project_id\": 944514545,\n  \"offer_id\": 98375923,\n  \"identifier\": \"R1704-013\",\n  \"date\": \"2017-04-05\",\n  \"due_date\": \"2017-04-25\",\n  \"service_period\": \"10/2018\",\n  \"service_period_from\": \"2018-10-01\",\n  \"service_period_to\": \"2018-10-31\",\n  \"status\": \"paid\",\n  \"reversed\": true,\n  \"reversal_invoice_id\": 80548,\n  \"reversal\": false,\n  \"reversed_invoice_id\": null,\n  \"title\": \"Invoice\",\n  \"recipient_address\": \"Beispiel AG\\r\\nBeispielstrasse 123\\r\\n8000 Z\u00fcrich\",\n  \"currency\": \"CHF\",\n  \"net_total\": 35612.5,\n  \"tax\": 8,\n  \"vat\": { \"tax\": 8.0, \"reverse_charge\": false, \"intra_eu\": false, \"active\": true, \"print_gross_total\": true, \"notice_tax_exemption\": \"\", \"notice_tax_exemption_alt\": \"\" },\n  \"gross_total\": 38461.5,\n  \"discount\": 10,\n  \"cash_discount\": 2.5,\n  \"cash_discount_days\": 5,\n  \"debit_number\": null,\n  \"credit_number\": null,\n  \"locked\": false,\n  \"activity_hours_modified\": false,\n  \"salutation\": \"<div>Wir erlauben uns, Ihnen Folgendes in Rechnung zu stellen:</div>\",\n  \"footer\": \"<div>Zahlbar ohne Abzug innert 20 Tagen.<br><br>Kontoverbindung...<br><br><br>Herzlichen Dank f\u00fcr Ihren Auftrag.</div>\",\n  \"custom_properties\": {\n    \"ext-ref\": \"3421\"\n  },\n  \"tags\": [\"Postversand\"],\n  \"file_url\": \"https://data.mocoapp.com/objects...\", \u26a0\ufe0f this link is only available for short time and changes afterwards\n  \"user\": {\n    \"id\": 1234,\n    \"firstname\": \"Jane\",\n    \"lastname\": \"Doe\"\n  },\n  \"items\": [\n    {\n      \"id\": 387469,\n      \"type\": \"title\",\n      \"title\": \"M\u00e4rz 2017\",\n      \"revenue_category\": {\n        \"id\": 123,\n        \"name\": \"Software-Entwicklung\",\n        \"revenue_account\": 30055,\n        \"cost_category\": \"SW1\"\n      },\n      \"description\": null,\n      \"quantity\": 0,\n      \"unit\": null,\n      \"unit_price\": 0,\n      \"net_total\": 0,\n      \"service_type\": \"service\"\n    },\n    {\n      \"id\": 387470,\n      \"type\": \"item\",\n      \"title\": \"Allgemeine Arbeiten\",\n      \"revenue_category\": null,\n      \"description\": null,\n      \"quantity\": 15.5,\n      \"unit\": \"h\",\n      \"unit_price\": 185,\n      \"net_total\": 2867.5,\n      \"service_type\": \"service\"\n    },\n    {\n      \"id\": 387471,\n      \"type\": \"item\",\n      \"title\": \"Umsetzung Backend\",\n      \"revenue_category\": {\n        \"id\": 123,\n        \"name\": \"Software-Entwicklung\",\n        \"revenue_account\": 30055,\n        \"cost_category\": \"SW1\"\n      },\n      \"description\": null,\n      \"quantity\": 4.25,\n      \"unit\": \"h\",\n      \"unit_price\": 185,\n      \"net_total\": 786.25,\n      \"service_type\": \"service\"\n    },\n    {\n      \"id\": 387472,\n      \"type\": \"item\",\n      \"title\": \"Umsetzung Frontend\",\n      \"revenue_category\": {\n        \"id\": 123,\n        \"name\": \"Software-Entwicklung\",\n        \"revenue_account\": 30055,\n        \"cost_category\": \"SW1\"\n      },\n      \"description\": null,\n      \"quantity\": 110.25,\n      \"unit\": \"h\",\n      \"unit_price\": 185,\n      \"net_total\": 20396.25,\n      \"service_type\": \"service\"\n    },\n    {\n      \"id\": 387473,\n      \"type\": \"item\",\n      \"title\": \"Hosting Dienstleistungen\",\n      \"revenue_category\": {\n        \"id\": 124,\n        \"name\": \"Hosting\",\n        \"revenue_account\": 30056,\n        \"cost_category\": \"HO1\"\n      },\n      \"description\": null,\n      \"quantity\": 45.5,\n      \"unit\": \"h\",\n      \"unit_price\": 185,\n      \"net_total\": 8417.5,\n      \"service_type\": \"expense\"\n    },\n    {\n      \"id\": 387474,\n      \"type\": \"item\",\n      \"title\": \"Support\",\n      \"revenue_category\": {\n        \"id\": 125,\n        \"name\": \"Support\",\n        \"revenue_account\": 30057,\n        \"cost_category\": \"SU1\"\n      },\n      \"description\": null,\n      \"quantity\": 11.75,\n      \"unit\": \"h\",\n      \"unit_price\": 185,\n      \"net_total\": 2173.75,\n      \"service_type\": \"service\"\n    },\n    {\n      \"id\": 387475,\n      \"type\": \"item\",\n      \"title\": \"Projektleitung / Kommunikation\",\n      \"revenue_category\": {\n        \"id\": 126,\n        \"name\": \"Projektleitung\",\n        \"revenue_account\": 30058,\n        \"cost_category\": \"PM1\"\n      },\n      \"description\": null,\n      \"quantity\": 5.25,\n      \"unit:\": \"h\",\n      \"unit_price\": 185,\n      \"net_total\": 971.25,\n      \"service_type\": \"service\"\n    }\n  ],\n  \"payments\": [\n    {\n      \"id\": 65938,\n      \"date\": \"2017-05-30\",\n      \"paid_total\": 10000,\n      \"currency\": \"CHF\",\n      \"created_on\": \"2017-06-05\",\n      \"updated_on\": \"2017-06-05\"\n    },\n    {\n      \"id\": 65939,\n      \"date\": \"2017-07-06\",\n      \"paid_total\": 28461.5,\n      \"currency\": \"CHF\",\n      \"created_on\": \"2017-07-10\",\n      \"updated_on\": \"2017-07-10\"\n    }\n  ],\n  \"reminders\": [\n    {\n      \"id\": 2291,\n      \"date\": \"2017-05-18\",\n      \"due_date\": \"2017-05-28\",\n      \"fee\": 0,\n      \"text\": \"<div>Sehr geehrte Damen und Herren<br><br>Bei der Kontrolle unserer Buchhaltung ist uns aufgefallen ...\",\n      \"created_on\": \"2017-05-18\",\n      \"updated_on\": \"2017-05-18\"\n    }\n  ],\n  \"created_at\": \"2018-10-17T09:33:46Z\",\n  \"updated_at\": \"2018-10-17T09:33:46Z\"\n}\n```\n\nCustom fields reference:\nMOCO supports saving custom fields to many of its resources. These custom fields are readable and writable via the `custom_properties` field.\n\n Custom fields must first be defined in the MOCO settings.\n\n The size of the custom_properties field is limitted to 12 kB.\n\n```json\n\"custom_properties\": {\n    \"UID\": \"123-UID-456\",\n    \"Line of business\": \"Automotive\"\n}\n```\n\nParameters are sent with their name as key:\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/customers \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"name\": \"Beispiel AG\",\n    \"currency\": \"CHF\",\n    \"custom_properties\": {\n      \"Line of business\": \"Automotive\"\n    }\n  }'\n```\n\nAll values are encoded as strings, expect for Multiple Choice, which is encoded as an array.\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/customers \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"custom_properties\": {\n          \"Line of business\": [\"Automotive\", \"Banking\"]\n        }\n      }'\n```\n\n- Single-line input \u2013 \"Automotive\"\n- Mehrzeilige Eingabe \u2013 \"A multiline input...\"\n- Link \u2013 \"https://www...\"\n- Date \u2013 \"2021-12-31\"\n- Yes/No \u2013 \"0\", \"1\" (0 = No, 1 = Yes)\n- Single choice \u2013 \"Value\"\n- Multiple choice \u2013 [\"Value 1\", \"Value 2\"]\n\n\nThe provided custom properties are merged with the existing custom properties of the entity. That is, only the provided custom properties are updated and the other custom properties of the entity are left unchanged.\nIt is possible to filter entities by custom fields, as described in\n[Global filters](./entities#filter-by-custom-fields-\u2013-custom_properties)"
+security:
+  -
+    TokenAuth:
+      []
+paths:
+  /invoices:
+    get:
+      summary: GET /invoices
+      description: "Retrieve all invoices:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/invoices' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nAdditionally, these parameters can be supplied:\n\n- [Global filters apply](../entities#global-filters)\n- **status** \u2013 (\"draft\", \"created\", \"sent\", \"partially_paid\", \"paid\", \"overdue\", \"ignored\") - multiple values are allowed, comma-separated.\n- **include_disregarded** true/false (if \"marked as billed\" should also be retrieved, default: false)\n- **not_booked** \u2013 true/false\n- **date_from** \u2013 \"2018-01-01\"\n- **date_to** \u2013 \"2018-01-31\"\n- **service_period_from** \u2013 \"2018-01-01\"\n- **service_period_to** \u2013 \"2018-01-31\"\n- **tags** \"Periodenfremd, Inkasso\" (comma separated list)\n- **identifier** \"R1903-003\"\n- **term** - \"term\" (wildcard search within title and identifier)\n- **company_id** - 1234\n- **project_id** - 5678\n\nThe response returns an array with all the invoice information (see attributes), except `salutation`, `footer`, `items`, `payments` and `reminders`.\n\n\u26a0\ufe0f For the status \"disregarded,\" which is not included by default, the response has far fewer fields."
+      tags:
+        - Invoices
+      security:
+        -
+          TokenAuth:
+            []
+      parameters:
+        -
+          $ref: "#/components/parameters/Ids"
+        -
+          $ref: "#/components/parameters/UpdatedAfter"
+        -
+          $ref: "#/components/parameters/CustomProperties"
+        -
+          $ref: "#/components/parameters/Page"
+        -
+          $ref: "#/components/parameters/PerPage"
+        -
+          $ref: "#/components/parameters/SortBy"
+      responses:
+        200:
+          description: "Retrieve all invoices:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/invoices' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nAdditionally, these parameters can be supplied:\n\n- [Global filters apply](../entities#global-filters)\n- **status** \u2013 (\"draft\", \"created\", \"sent\", \"partially_paid\", \"paid\", \"overdue\", \"ignored\") - multiple values are allowed, comma-separated."
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Invoices"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getInvoicesInvoices
+    post:
+      summary: POST /invoices
+      description: "Create an invoice:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/invoices' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"customer_id\": 123456,\n        \"project_id\": 654321,\n        \"recipient_address\": \"Mein Kunde\\nHauptstrasse 1\\n8000 Z\u00fcrich\",\n        \"date\": \"2018-09-17\",\n        \"due_date\": \"2018-10-16\",\n        \"title\": \"Invoice\",\n        \"tax\": 8.0,\n        \"currency\": \"CHF\",\n        \"service_period_from\": \"2019-12-01\",\n        \"service_period_to\": \"2019-12-31\",\n        \"internal_contact_id\": 1234,\n        \"items\": [\n          {\n            \"type\": \"title\",\n            \"title\": \"Hours\"\n          },\n          {\n            \"type\": \"description\",\n            \"description\": \"Listing of all hours\"\n          },\n          {\n            \"type\": \"item\",\n            \"title\": \"Hosting\",\n            \"quantity\": 1,\n            \"unit\": \"Stk\",\n            \"unit_price\": 99.0\n          },\n          {\n            \"type\": \"separator\"\n          },\n          {\n            \"type\": \"item\",\n            \"title\": \"Design\",\n            \"quantity\": 3,\n            \"unit\": \"h\",\n            \"unit_price\": 150.0\n          },\n          {\n            \"type\": \"item\",\n            \"title\": \"Setup MailChimp (pauschal)\",\n            \"net_total\": 400.00\n          }\n        ]\n    }'\n```\n\nMandatory fields are marked with a star (\\*):\n\n- **customer_id\\*** \u2013 123456 (ID of the assigned client)\n- **recipient_address\\*** \u2013 \"My customer...\"\n- **date\\*** \u2013 \"2018-09-17\"\n- **due_date\\*** \u2013 \"2018-10-16\"\n- **service_period_from** \u2013 \"2018-08-01\"\n- **service_period_to** \u2013 \"2018-08-30\"\n- **title\\*** \u2013 \"Invoice\"\n- **tax\\*** \u2013 8.0\n- **currency\\*** \u2013 \"CHF\" (a valid currency of the account)\n- **items\\*** \u2013 positions (see [attributes](#attributes))\n- **status** \u2013 `created` / `draft` , default is `created`, specify `draft` in order to create a draft invoice\n- **change_address** \u2013 address propagation (\"invoice\", \"project\", \"customer\"), default is \"invoice\"\n- **salutation** (salutation text)\n- **footer** (footer text)\n- **discount** \u2013 10 (discount in percent)\n- **cash_discount** \u2013 2.5 (cash discount in percent)\n- **cash_discount_days** \u2013 5 (cash discount due days)\n- **project_id** \u2013 654321 (ID of the assigned project)\n- **internal_contact_id** - 1234 (ID of an internal user)\n- **custom_properties** \u2013 {\"ext-ref\": \"5433\"}\n- **tags** \u2013 [\"Hosting\", \"Europe\"]\n- **print_detail_columns**  - true (Hide/Display 'quantity, unit, price'). Optional property, which defaults to the global account layout setting\n\nOmitted fields `service_period_from` and `service_period_to` indicates the absences of a service period.\n\nItems with `quantity`, `unit` and `unit_price` can be used to select activities or expenses to be billed by this invoice,\njust specify the IDs using respectively `activity_ids` and `expense_ids`, for example:\n\n```json\n{\n  \"type\": \"item\",\n  \"title\": \"Design\",\n  \"quantity\": 3,\n  \"unit\": \"h\",\n  \"unit_price\": 150.0,\n  \"activity_ids\": [1253, 8712]\n}\n```"
+      tags:
+        - Invoices
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        201:
+          description: "Create an invoice:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/invoices' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"customer_id\": 123456,\n        \"project_id\": 654321,\n        \"recipient_address\": \"Mein Kunde\\nHauptstrasse 1\\n8000 Z\u00fcrich\",\n        \"date\": \"2018-09-17\",\n        \"due_date\": \"2018-10-16\",\n        \"title\": \"Invoice\",\n        \"tax\": 8.0,\n        \"currency\": \"CHF\",\n        \"service_period_from\": \"2019-12-01\",\n        \"service_period_to\": \"2019-12-31\",\n        \"internal_contact_id\": 1234,\n        \"items\": [\n          {\n            \"type\": \"title\",\n            \"title\": \"Hours\"\n          },\n          {\n            \"type\": \"description\",\n            \"description\": \"Listing of all hours\"\n          },\n          {\n            \"type\": \"item\",\n            \"title\": \"Hosting\",\n            \"quantity\": 1,\n            \"unit\": \"Stk\",\n            \"unit_price\": 99.0\n          },\n          {\n            \"type\": \"separator\"\n          },\n          {\n            \"type\": \"item\",\n            \"title\": \"Design\",\n            \"quantity\": 3,\n            \"unit\": \"h\",\n            \"unit_price\": 150.0\n          },\n          {\n            \"type\": \"item\",\n            \"title\": \"Setup MailChimp (pauschal)\",\n            \"net_total\": 400.00\n          }\n        ]\n    }'\n```\n\nMandatory fields are marked with a star (\\*):\n\n- **customer_id\\*** \u2013 123456 (ID of the assigned client)\n- **recipient_address\\*** \u2013 \"My customer...\"\n- **date\\*** \u2013 \"2018-09-17\"\n- **due_date\\*** \u2013 \"2018-10-16\"\n- **service_period_from** \u2013 \"2018-08-01\"\n- **service_period_to** \u2013 \"2018-08-30\"\n- **title\\*** \u2013 \"Invoice\"\n- **tax\\*** \u2013 8.0\n- **currency\\*** \u2013 \"CHF\" (a valid currency of the account)\n- **items\\*** \u2013 positions (see [attributes](#attributes))\n- **status** \u2013 `created` / `draft` , default is `created`, specify `draft` in order to create a draft invoice\n- **change_address** \u2013 address propagation (\"invoice\", \"project\", \"customer\"), default is \"invoice\"\n- **salutation** (salutation text)\n- **footer** (footer text)\n- **discount** \u2013 10 (discount in percent)\n- **cash_discount** \u2013 2.5 (cash discount in percent)\n- **cash_discount_days** \u2013 5 (cash discount due days)\n- **project_id** \u2013 654321 (ID of the assigned project)\n- **internal_contact_id** - 1234 (ID of an internal user)\n- **custom_properties** \u2013 {\"ext-ref\": \"5433\"}\n- **tags** \u2013 [\"Hosting\", \"Europe\"]\n- **print_detail_columns**  - true (Hide/Display 'quantity, unit, price')."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoices"
+              examples:
+                example:
+                  value:
+                    type: item
+                    title: Design
+                    quantity: 3
+                    unit: h
+                    unit_price: 150.0
+                    activity_ids:
+                      - 1253
+                      - 8712
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Invoices"
+            examples:
+              example:
+                value:
+                  customer_id: 123456
+                  project_id: 654321
+                  recipient_address: "Mein Kunde\nHauptstrasse 1\n8000 Z\u00fcrich"
+                  date: "2018-09-17"
+                  due_date: "2018-10-16"
+                  title: Invoice
+                  tax: 8.0
+                  currency: CHF
+                  service_period_from: "2019-12-01"
+                  service_period_to: "2019-12-31"
+                  internal_contact_id: 1234
+                  items:
+                    -
+                      type: title
+                      title: Hours
+                    -
+                      type: description
+                      description: Listing of all hours
+                    -
+                      type: item
+                      title: Hosting
+                      quantity: 1
+                      unit: Stk
+                      unit_price: 99.0
+                    -
+                      type: separator
+                    -
+                      type: item
+                      title: Design
+                      quantity: 3
+                      unit: h
+                      unit_price: 150.0
+                    -
+                      type: item
+                      title: Setup MailChimp (pauschal)
+                      net_total: 400.0
+      operationId: postInvoicesInvoices
+  /invoices/locked:
+    get:
+      summary: GET /invoices/locked
+      description: "Retrieve all locked invoices:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/locked' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nAdditionally, the following parameters can be supplied:\n\n- **status** \u2013 (\"draft\", \"created\", \"sent\", \"partially_paid\", \"paid\", \"overdue\", \"ignored\")\n- **date_from** \u2013 \"2018-01-01\"\n- **date_to** \u2013 \"2018-01-31\"\n- **identifier** \"R1903-003\"\n\nThe response returns an array with all the invoice information (see attributes), except `salutation`, `footer`, `items`, `payments` and `reminders`."
+      tags:
+        - Invoices
+      security:
+        -
+          TokenAuth:
+            []
+      parameters:
+        -
+          $ref: "#/components/parameters/Ids"
+        -
+          $ref: "#/components/parameters/UpdatedAfter"
+        -
+          $ref: "#/components/parameters/CustomProperties"
+        -
+          $ref: "#/components/parameters/Page"
+        -
+          $ref: "#/components/parameters/PerPage"
+        -
+          $ref: "#/components/parameters/SortBy"
+      responses:
+        200:
+          description: "Retrieve all locked invoices:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/locked' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nAdditionally, the following parameters can be supplied:\n\n- **status** \u2013 (\"draft\", \"created\", \"sent\", \"partially_paid\", \"paid\", \"overdue\", \"ignored\")\n- **date_from** \u2013 \"2018-01-01\"\n- **date_to** \u2013 \"2018-01-31\"\n- **identifier** \"R1903-003\"\n\nThe response returns an array with all the invoice information (see attributes), except `salutation`, `footer`, `items`, `payments` and `reminders`."
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Invoices"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getInvoicesLockedInvoices
+  /invoices/{id}:
+    get:
+      summary: "GET /invoices/{id}"
+      description: "Retrieve a single invoice:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns a single invoice representation, including internal contact, positions, payments and reminders."
+      tags:
+        - Invoices
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Retrieve a single invoice:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns a single invoice representation, including internal contact, positions, payments and reminders."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoices"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getInvoicesIdInvoices
+    delete:
+      summary: "DELETE /invoices/{id}"
+      description: "Delete a single invoice:\n\n```bash\ncurl -X DELETE \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"reason\": \"Wrong invoice number\",\n      }'\n```\n\nMandatory fields are marked with a star (\\*):\n\n- **reason\\*** \u2013 \"Wrong invoice number\" (a reason why this invoice is being deleted), This can only be omitted if the invoice to be deleted is a draft."
+      tags:
+        - Invoices
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        204:
+          description: "Delete a single invoice:\n\n```bash\ncurl -X DELETE \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"reason\": \"Wrong invoice number\",\n      }'\n```\n\nMandatory fields are marked with a star (\\*):\n\n- **reason\\*** \u2013 \"Wrong invoice number\" (a reason why this invoice is being deleted), This can only be omitted if the invoice to be deleted is a draft."
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: deleteInvoicesIdInvoices
+  /invoices/{id}.pdf:
+    get:
+      summary: "GET /invoices/{id}.pdf"
+      description: "Retrieve a single invoice document:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{id}.pdf' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nAdditionally, the following parameters can be supplied:\n\n- **blank** \u2013 (to get the invoice without the letter paper)\n- **letter_paper_id** \u2013 (the letter paper ID, if left off the default letter paper will be taken)\n\nThis returns this invoice's PDF document."
+      tags:
+        - Invoices
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Retrieve a single invoice document:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{id}.pdf' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nAdditionally, the following parameters can be supplied:\n\n- **blank** \u2013 (to get the invoice without the letter paper)\n- **letter_paper_id** \u2013 (the letter paper ID, if left off the default letter paper will be taken)\n\nThis returns this invoice's PDF document."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoices"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getInvoicesId.PdfInvoices
+  /invoices/{id}/timesheet:
+    get:
+      summary: "GET /invoices/{id}/timesheet"
+      description: "Retrieve a time sheet for a particular invoice, i.e. all activities that were invoiced.\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{id}/timesheet' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns a list of activities:\n\n```json\n[\n  {\n    \"id\": 988913748,\n    \"date\": \"2021-01-25\",\n    \"hours\": 4.0,\n    \"description\": \"Description\",\n    \"billed\": true,\n    \"billable\": true,\n    \"tag\": \"\",\n    \"remote_service\": \"trello\",\n    \"remote_id\": \"0FhzirkJ\",\n    \"remote_url\": \"https://trello.com/c/0FhziaBc/1-test\",\n    \"project\": {\n      \"id\": 944807389,\n      \"name\": \"Pitch Project\",\n      \"billable\": true\n    },\n    \"task\": {\n      \"id\": 2262446,\n      \"name\": \"Design / UX\",\n      \"billable\": true\n    },\n    \"customer\": {\n      \"id\": 760255659,\n      \"name\": \"Acme Corp.\"\n    },\n    \"user\": {\n      \"id\": 933618783,\n      \"firstname\": \"Jane\",\n      \"lastname\": \"Doe\"\n    },\n    \"timer_started_at\": null,\n    \"created_at\": \"2021-02-26T10:48:28Z\",\n    \"updated_at\": \"2021-02-26T11:42:47Z\",\n    \"hourly_rate\": 150.0\n  }\n]\n```"
+      tags:
+        - Invoices
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Retrieve a time sheet for a particular invoice, i.e."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoices"
+              examples:
+                example:
+                  value:
+                    -
+                      id: 988913748
+                      date: "2021-01-25"
+                      hours: 4.0
+                      description: Description
+                      billed: true
+                      billable: true
+                      tag: ""
+                      remote_service: trello
+                      remote_id: 0FhzirkJ
+                      remote_url: "https://trello.com/c/0FhziaBc/1-test"
+                      project:
+                        id: 944807389
+                        name: Pitch Project
+                        billable: true
+                      task:
+                        id: 2262446
+                        name: Design / UX
+                        billable: true
+                      customer:
+                        id: 760255659
+                        name: Acme Corp.
+                      user:
+                        id: 933618783
+                        firstname: Jane
+                        lastname: Doe
+                      timer_started_at: null
+                      created_at: "2021-02-26T10:48:28Z"
+                      updated_at: "2021-02-26T11:42:47Z"
+                      hourly_rate: 150.0
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getInvoicesIdTimesheetInvoices
+  /invoices/{id}/timesheet.pdf:
+    get:
+      summary: "GET /invoices/{id}/timesheet.pdf"
+      description: "Retrieve a time sheet for a particular invoice:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{id}/timesheet.pdf' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nAdditionally, the following parameters can be supplied:\n\n- **letter_paper_id** \u2013 (letter paper ID, default: White)\n\nThis returns a PDF document or a status code 404, if no hours are available."
+      tags:
+        - Invoices
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Retrieve a time sheet for a particular invoice:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{id}/timesheet.pdf' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nAdditionally, the following parameters can be supplied:\n\n- **letter_paper_id** \u2013 (letter paper ID, default: White)\n\nThis returns a PDF document or a status code 404, if no hours are available."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoices"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getInvoicesIdTimesheet.PdfInvoices
+  /invoices/{id}/expenses:
+    get:
+      summary: "GET /invoices/{id}/expenses"
+      description: "Retrieve all expenses that were invoiced in a particular invoice.\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{id}/expenses' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns a list of expenses:\n\n```json\n[\n  {\n    \"id\": 47266,\n    \"date\": \"2017-07-07\",\n    \"title\": \"Hosting XS\",\n    \"description\": \"<div>Hosting, Monitoring und Backup</div>\",\n    \"quantity\": 3,\n    \"unit\": \"Monat\",\n    \"unit_price\": 29,\n    \"unit_cost\": 19,\n    \"price\": 87,\n    \"cost\": 57,\n    \"currency\": \"CHF\",\n    \"budget_relevant\": true,\n    \"billable\": true,\n    \"billed\": false,\n    \"recurring_expense_id\": null,\n    \"service_period\": \"10/2020\",\n    \"service_period_from\": \"2020-10-01\",\n    \"service_period_to\": \"2020-10-31\",\n    \"file_url\": \"https//meinefirma.mocoapp.com/.../beleg1.jpg\",\n    \"custom_properties\": {\n      \"Type\": \"Website\"\n    },\n    \"company\": {\n      \"id\": 1234,\n      \"name\": \"Acme Corp.\"\n    },\n    \"project\": {\n      \"id\": 1234,\n      \"name\": \"Project A\"\n    },\n    \"purchase_id\": 123456,\n    \"purchase_item_id\": 234567,\n    \"created_at\": \"2018-10-17T09:33:46Z\",\n    \"updated_at\": \"2018-10-17T09:33:46Z\"\n  }\n]\n```"
+      tags:
+        - Invoices
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: Retrieve all expenses that were invoiced in a particular invoice.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoices"
+              examples:
+                example:
+                  value:
+                    -
+                      id: 47266
+                      date: "2017-07-07"
+                      title: Hosting XS
+                      description: "<div>Hosting, Monitoring und Backup</div>"
+                      quantity: 3
+                      unit: Monat
+                      unit_price: 29
+                      unit_cost: 19
+                      price: 87
+                      cost: 57
+                      currency: CHF
+                      budget_relevant: true
+                      billable: true
+                      billed: false
+                      recurring_expense_id: null
+                      service_period: 10/2020
+                      service_period_from: "2020-10-01"
+                      service_period_to: "2020-10-31"
+                      file_url: https//meinefirma.mocoapp.com/.../beleg1.jpg
+                      custom_properties:
+                        Type: Website
+                      company:
+                        id: 1234
+                        name: Acme Corp.
+                      project:
+                        id: 1234
+                        name: Project A
+                      purchase_id: 123456
+                      purchase_item_id: 234567
+                      created_at: "2018-10-17T09:33:46Z"
+                      updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getInvoicesIdExpensesInvoices
+  /invoices/{id}/update_status:
+    put:
+      summary: "PUT /invoices/{id}/update_status"
+      description: "Only works for actual invoices, not invoice drafts. It's not possible to convert a draft to a regular invoice.\n\nUpdate an invoice status:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{id}/update_status' \\\n  -H 'authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"status\": \"sent\"\n      }'\n```\n\nThe following states are valid: \"created\", \"sent\", \"overdue\", \"ignored\" \u2013 the invoice status is set automatically, as soon as a payment is created."
+      tags:
+        - Invoices
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Only works for actual invoices, not invoice drafts."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoices"
+              examples:
+                example:
+                  value:
+                    status: sent
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Invoices"
+            examples:
+              example:
+                value:
+                  status: sent
+      operationId: putInvoicesIdUpdate_StatusInvoices
+  /invoices/{id}/send_email:
+    post:
+      summary: "POST /invoices/{id}/send_email"
+      description: "Send the invoice by email:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{id}/send_email' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"emails_to\": \"somebody@example.com\",\n        \"subject\": \"Invoice\",\n        \"text\": \"Kind regards\"\n      }'\n```\n\nMandatory fields are marked with a star (\\*):\n\n- **subject\\*** \u2013 \"Invoice\",\n- **text\\*** \u2013 \"Kind regards\"\n- **emails_to** \u2013 \"somebody@example.com;info@example.com\" (list of addresses separated by _;_). To use default recipients, see information below.\n- **emails_cc** \u2013 \"somebodyelse@example.com\" (list of addresses separated by _;_)\n- **emails_bcc** \u2013 \"somebody@partner.example.com\" (list of addresses separated by _;_)\n- **letter_paper_id** \u2013 123 (the letter paper ID to use, leave blank for the default letter paper)\n\n\ud83d\udec8 If you want to send emails to the default recipients configured in the project or on the customer, leave `emails_to`, `emails_cc` and `emails_bcc` empty. `emails_to` always needs to be provided, either via the default recipients or as a given value. In the response, the recipients selected are returned."
+      tags:
+        - Invoices
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        201:
+          description: "Send the invoice by email:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{id}/send_email' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"emails_to\": \"somebody@example.com\",\n        \"subject\": \"Invoice\",\n        \"text\": \"Kind regards\"\n      }'\n```\n\nMandatory fields are marked with a star (\\*):\n\n- **subject\\*** \u2013 \"Invoice\",\n- **text\\*** \u2013 \"Kind regards\"\n- **emails_to** \u2013 \"somebody@example.com;info@example.com\" (list of addresses separated by _;_)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoices"
+              examples:
+                example:
+                  value:
+                    emails_to: somebody@example.com
+                    subject: Invoice
+                    text: Kind regards
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Invoices"
+            examples:
+              example:
+                value:
+                  emails_to: somebody@example.com
+                  subject: Invoice
+                  text: Kind regards
+      operationId: postInvoicesIdSend_EmailInvoices
+  /invoices/{id}/attachments:
+    get:
+      summary: "GET /invoices/{id}/attachments"
+      description: "List all attachments for this invoice:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{invoice_id}/attachments' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nProvide the payload base64 encoded."
+      tags:
+        - Invoices
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "List all attachments for this invoice:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{invoice_id}/attachments' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nProvide the payload base64 encoded."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoices"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getInvoicesIdAttachmentsInvoices
+  /invoices/{invoice_id}/attachments:
+    post:
+      summary: "POST /invoices/{invoice_id}/attachments"
+      description: "Add attachment PDF to invoice:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{invoice_id}/attachments' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"attachment\": {\n          \"filename\": \"attachment.pdf\",\n          \"base64\": \"JVBERi0xLjQKJeLjz9MKNCAwIG9iago8PC9GaWx...\"\n        }\n      }'\n```\n\nProvide the payload base64 encoded."
+      tags:
+        - Invoices
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        201:
+          description: "Add attachment PDF to invoice:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{invoice_id}/attachments' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"attachment\": {\n          \"filename\": \"attachment.pdf\",\n          \"base64\": \"JVBERi0xLjQKJeLjz9MKNCAwIG9iago8PC9GaWx...\"\n        }\n      }'\n```\n\nProvide the payload base64 encoded."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoices"
+              examples:
+                example:
+                  value:
+                    attachment:
+                      filename: attachment.pdf
+                      base64: JVBERi0xLjQKJeLjz9MKNCAwIG9iago8PC9GaWx...
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Invoices"
+            examples:
+              example:
+                value:
+                  attachment:
+                    filename: attachment.pdf
+                    base64: JVBERi0xLjQKJeLjz9MKNCAwIG9iago8PC9GaWx...
+      operationId: postInvoicesInvoice_IdAttachmentsInvoices
+  /invoices/{invoice_id}/attachments/{id}:
+    delete:
+      summary: "DELETE /invoices/{invoice_id}/attachments/{id}"
+      description: "Remove attachment from invoice:\n\n```bash\ncurl -X DELETE \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{invoice_id}/attachments/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```"
+      tags:
+        - Invoices
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        204:
+          description: "Remove attachment from invoice:\n\n```bash\ncurl -X DELETE \\\n  'https://{domain}.mocoapp.com/api/v1/invoices/{invoice_id}/attachments/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: deleteInvoicesInvoice_IdAttachmentsIdInvoices

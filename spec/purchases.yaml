@@ -1,0 +1,1127 @@
+openapi: 3.1.0
+info:
+  title: Purchases API
+  version: 1.0.0
+  description: "German: \"Ausgaben\"\n\n- TOC\n\n## General\n- Request payloads to MOCO must be sent as valid JSON with a mandatory `Content-Type: application/json`-header. Responses are also sent as JSON.\n- All requests have to be [authenticated](authentication) with a key\n- Example responses showcase the happy case, i.e. usually the `200 OK` response\n- Collections are usually [paginated](#pagination)\n- Zapier triggers are **not** triggered for API requests\n- Timestamps `created_at` and `updated_at` are sent for all entities in UTC, as ISO8601 format.\n- For synchronization almost all resources can be filtered by `updated_after` passing a time in UTC, as ISO8601 format.\n- MOCO does not support any client-libraries at the moment. However, there are currently the following unofficial clients available, which you can use at your risk: [Python Client](https://github.com/sommalia/moco-wrapper)\n\n## Entities\nAll the entities exposed via the API can be found in their [respective sections](entities.md)\n\n## Client Implementations / API Wrappers\nHere's a list of API client implementations, not maintained by us. Feel free to open up a PR to point to your implementation so others can re-use it.\n\n| Language |                Repository                                                                            |\n| :------: | :-------------------------------------------------------------------------------------------------:  |\n| Python   | [https://github.com/sommalia/moco-wrapper](https://github.com/sommalia/moco-wrapper)                 |\n| PHP      | [https://github.com/mbs-hub/moco-php](https://github.com/mbs-hub/moco-php)                           |\n| Ruby     | [https://github.com/starsong-consulting/moco-ruby](https://github.com/starsong-consulting/moco-ruby) |\n\n## Impersonation\nBy default all requests are scoped to the authenticated user. Some resources cannot be provided with a `user_id` or similar, like `Activities` and `User Presences`. This reflects the behaviour in the UI, since every user can only create their own activities or presences. But you can login as another user provided that the authenticated user has permission to _Staff_. To achieve the same behaviour in the API, one can set the following x-header:\n\n`X-IMPERSONATE-USER-ID=123` (user id to act in behalf of)\n\n## Rate Limiting\nYou can expect to be able to send 120 requests per 2 minutes (~ 1 request per second). For the unlimited plan, its 1200 requests per 2 minutes (~ 10 per second). If you exceed this limit, the server responds with `429 Too Many Requests`.\n\n## Pagination\nResponses are paginated with a common default of 100 entries per page. In the HTTP response header, the current page, the entries per page and the number of total entries is reported. There is also a link header to links to the consecutive page.\n\n- **X-Page** \u2013 3\n- **X-Per-Page** \u2013 100\n- **X-Total** \u2013 415\n- **Link** \u2013 `<https://{domain}.mocoapp.com/api/v1/projects.json?page=4>; rel=\"next\"`\n\nIf there is not Link header with `rel=\"next\"`, the current page is the last page.\n\n## Errors and HTTP status codes\nThe MOCO-API is mostly conformant with the [general HTTP status codes](https://en.wikipedia.org/wiki/List_of_HTTP_status_codes).\n\nHere are the most comment errors you will see:\n\n- **401 Unauthorized** - Check the error message in the response body\n- **403 Forbidden** - Check your [Authentication](#authentication) or your MOCO user permission\n- **404 Not Found** - Check that resource exists (maybe it was deleted in the meantime)\n- **422 Unprocessable Entity** - Check the provided error message in the response body\n- **429 Too Many Requests** - Check [Rate Limiting](#rate-limiting)\n\nSorting is controlled by the `sort_by` query parameter. Its value is the field name that should be sorted, followed by an optional sorting order (`asc` or `desc`, default is `asc`).\n\nExample:\n\n- `https://{domain}.mocoapp.com/api/v1/offers?sort_by=title desc`"
+servers:
+  -
+    url: "https://{domain}.mocoapp.com/api/v1"
+    description: Base server URL for the MOCO API.
+tags:
+  -
+    name: Purchases
+    description: "German: \"Ausgaben\"\n\n- TOC"
+components:
+  securitySchemes:
+    TokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: "There's two ways to authenticate against MOCO:\n\n1. **User API key**. Can be found under the \"Integrations\" tab on the profile page.\n2. **Account API key**. Has to be created in Settings > Extensions > API & Webhooks, with either read-only or full access on all endpoints.\n\nBoth kinds of keys are provided as an Authorization header.\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/projects.json' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis key can also be requested via API for user-specific keys:\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/session \\\n  -H 'Accept: application/json' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"email\": \"max@muster.de\",\n    \"password\": \"secret\"\n  }'\n```\n\nIt's also possible to verify if the API key is still valid:\n\n```bash\ncurl https://{domain}.mocoapp.com/api/v1/session \\\n  -H 'Accept: application/json' \\\n  -H 'Content-Type: application/json'\n```\n\nIf the key is valid, the response code id `200 ok` and the body is:\n\n```json\n{\n  \"id\": 123,\n  \"uuid\": \"aec324a2-4832-11eb-b378-0242ac130002\"\n}\n```\n\notherwise the response code is `401 unauthorized`.\nThere are a few tools to try out the MOCO API. All the examples in this documentation use `curl` to demonstrate the API endpoint.\nA popular graphical UI for REST is [Postman](https://www.postman.com/). Here's an example request for the projects list including the authentication:\n\n![Postman example request](moco-api-postman.png \"Postman example request\")"
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: Pagination support as described in the general documentation.
+      schema:
+        type: integer
+        minimum: 1
+    PerPage:
+      name: per_page
+      in: query
+      description: Number of items per page for paginated responses.
+      schema:
+        type: integer
+        minimum: 1
+    SortBy:
+      name: sort_by
+      in: query
+      description: Sorting is controlled by the `sort_by` query parameter. Provide the field name and optional order (asc or desc).
+      schema:
+        type: string
+    Ids:
+      name: ids
+      in: query
+      description: "Usage: `GET /api/v1/entities?ids=123,456`\n\nAllows you to filter by comma-separated IDs and fetch multiple entities."
+      schema:
+        type: string
+    UpdatedAfter:
+      name: updated_after
+      in: query
+      description: "Usage: `GET /api/v1/entities?updated_after=2022-04-20T09:17:58Z` (ISO8601 timestamp)\n\nEnables you to give a timestamp for all entities that are created or updated after this timestamp, especially useful for synchronisation purposes.\n\nCombine it with a [webhook subscription](webhooks) on DELETE for the entity to have a complete synchronisation."
+      schema:
+        type: string
+        format: "date-time"
+    CustomProperties:
+      name: custom_properties
+      in: query
+      description: "Allows you to filter entities by one or more custom fields. The filter for the custom fields is passed via the query-parameter `custom_properties`. To query entities that contain the value \"Automotive\" in a custom field named \"Sector\", the query would need to be as follows:\n\n`GET /api/v1/entities?custom_properties[Sector]=Automotive`\n\nFiltering by an unknown custom field will result in an empty result set!"
+      schema:
+        type: object
+        additionalProperties: true
+      style: deepObject
+      explode: true
+  schemas:
+    ErrorResponse:
+      type: object
+      description: Generic error response body.
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      additionalProperties: true
+    Purchases:
+      type: object
+      description: "Includes among the standard fields for purchases also:\n\n- tags\n- company (if the purchase is associated to a supplier)\n- payments (list of payments made for the purchase)\n- user\n- status (`pending` = Inbox, `archived` = Archive)\n- approval_status (`none` = no approval requested, `approved` = all requests approved, `denied` = at least 1 denial none pending, `pending` = approvals still pending)\n- items\n- items.vat (\"tax\", \"reverse_charge\", \"intra_eu\" (intra community trade, only applicable for accounts in the EU))\n- items.expense (the associated project expense or `null`)\n- items.receipt (the associated receipt or `null`)\n\n```json\n{\n  \"id\": 987,\n  \"identifier\": \"E2016-0001\",\n  \"receipt_identifier\": \"KK121\",\n  \"title\": \"SBB Ticket\",\n  \"info\": null,\n  \"iban\": \"CH3908704016075473007\",\n  \"reference\": null,\n  \"date\": \"2020-02-28\",\n  \"due_date\": null,\n  \"service_period_from\": \"2020-02-28\",\n  \"service_period_to\": \"2020-02-28\",\n  \"status\": \"pending\",\n  \"payment_method\": \"bank_transfer\",\n  \"net_total\": 44.88,\n  \"gross_total\": 46.0,\n  \"currency\": \"CHF\",\n  \"file_url\": null,\n  \"custom_properties\": { \"Various\": \"some stuff\" },\n  \"tags\": [\"Transportation\"],\n  \"approval_status\": \"approved\",\n  \"company\": {\n    \"id\": 5552,\n    \"name\": \"Schweizerische Bundesbahnen SBB\",\n    \"iban\": \"CH3908704016075473007\"\n  },\n  \"payments\": [],\n  \"user\": {\n    \"id\": 433109936,\n    \"firstname\": \"Mario\",\n    \"name\": \"Rossi\"\n  },\n  \"refund_request\": {\n    \"id\": 66129936,\n    \"comment\": \"My receipts\",\n    \"user_id\": 123456\n  },\n  \"credit_card_transaction\": {\n    \"source\": \"pliant\",\n    \"transaction_identifier\": \"57a04fc8-a56e-4be6-acb2-241b513f0570\"\n  },\n  \"items\": [\n    {\n      \"id\": 311936153,\n      \"title\": \"SBB Ticket\",\n      \"net_total\": 44.88,\n      \"tax_total\": 1.12,\n      \"tax\": 2.5,\n      \"vat\": { \"tax\": 2.5, \"reverse_charge\": false, \"intra_eu\": false, \"active\": true },\n      \"tax_included\": true,\n      \"gross_total\": 46.0,\n      \"category\": {\n        \"id\": 671034328,\n        \"name\": \"Spesen und Reisekosten\",\n        \"credit_account\": \"6640\"\n      },\n      \"supplier_credit_number\": 70001,\n      \"expense\": {\n        \"id\": 7655423,\n        \"project\": {\n          \"id\": 23345545,\n          \"company_id\": 54345\n        }\n      },\n      \"receipt\": {\n        \"id\": 9857765,\n        \"title\": \"SBB Ticket\",\n        \"date\": \"2018-10-01\",\n        \"attachment_url\": \"https://...\"\n      }\n    }\n  ],\n  \"created_at\": \"2018-10-17T09:33:46Z\",\n  \"updated_at\": \"2018-10-17T09:33:46Z\"\n}\n```\n\nCustom fields reference:\nMOCO supports saving custom fields to many of its resources. These custom fields are readable and writable via the `custom_properties` field.\n\n Custom fields must first be defined in the MOCO settings.\n\n The size of the custom_properties field is limitted to 12 kB.\n\n```json\n\"custom_properties\": {\n    \"UID\": \"123-UID-456\",\n    \"Line of business\": \"Automotive\"\n}\n```\n\nParameters are sent with their name as key:\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/customers \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"name\": \"Beispiel AG\",\n    \"currency\": \"CHF\",\n    \"custom_properties\": {\n      \"Line of business\": \"Automotive\"\n    }\n  }'\n```\n\nAll values are encoded as strings, expect for Multiple Choice, which is encoded as an array.\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/customers \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"custom_properties\": {\n          \"Line of business\": [\"Automotive\", \"Banking\"]\n        }\n      }'\n```\n\n- Single-line input \u2013 \"Automotive\"\n- Mehrzeilige Eingabe \u2013 \"A multiline input...\"\n- Link \u2013 \"https://www...\"\n- Date \u2013 \"2021-12-31\"\n- Yes/No \u2013 \"0\", \"1\" (0 = No, 1 = Yes)\n- Single choice \u2013 \"Value\"\n- Multiple choice \u2013 [\"Value 1\", \"Value 2\"]\n\n\nThe provided custom properties are merged with the existing custom properties of the entity. That is, only the provided custom properties are updated and the other custom properties of the entity are left unchanged.\nIt is possible to filter entities by custom fields, as described in\n[Global filters](./entities#filter-by-custom-fields-\u2013-custom_properties)"
+      example:
+        id: 987
+        identifier: "E2016-0001"
+        receipt_identifier: KK121
+        title: SBB Ticket
+        info: null
+        iban: CH3908704016075473007
+        reference: null
+        date: "2020-02-28"
+        due_date: null
+        service_period_from: "2020-02-28"
+        service_period_to: "2020-02-28"
+        status: pending
+        payment_method: bank_transfer
+        net_total: 44.88
+        gross_total: 46.0
+        currency: CHF
+        file_url: null
+        custom_properties:
+          Various: some stuff
+        tags:
+          - Transportation
+        approval_status: approved
+        company:
+          id: 5552
+          name: Schweizerische Bundesbahnen SBB
+          iban: CH3908704016075473007
+        payments:
+          []
+        user:
+          id: 433109936
+          firstname: Mario
+          name: Rossi
+        refund_request:
+          id: 66129936
+          comment: My receipts
+          user_id: 123456
+        credit_card_transaction:
+          source: pliant
+          transaction_identifier: "57a04fc8-a56e-4be6-acb2-241b513f0570"
+        items:
+          -
+            id: 311936153
+            title: SBB Ticket
+            net_total: 44.88
+            tax_total: 1.12
+            tax: 2.5
+            vat:
+              tax: 2.5
+              reverse_charge: false
+              intra_eu: false
+              active: true
+            tax_included: true
+            gross_total: 46.0
+            category:
+              id: 671034328
+              name: Spesen und Reisekosten
+              credit_account: 6640
+            supplier_credit_number: 70001
+            expense:
+              id: 7655423
+              project:
+                id: 23345545
+                company_id: 54345
+            receipt:
+              id: 9857765
+              title: SBB Ticket
+              date: "2018-10-01"
+              attachment_url: "https://..."
+        created_at: "2018-10-17T09:33:46Z"
+        updated_at: "2018-10-17T09:33:46Z"
+security:
+  -
+    TokenAuth:
+      []
+paths:
+  /purchases:
+    get:
+      summary: GET /purchases
+      description: "Retrieve all purchases:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/purchases' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nIt's also possible to filter:\n\n- [Global filters apply](../entities#global-filters)\n- **category_id** \u2013 identifier of the purchases' category,\n- **term** \u2013 full text search on purchase positions,\n- **company_id** \u2013 identifier of the supplier, pass _0_ to get the purchases not associated to a supplier,\n- **status** \u2013 \"pending\" or \"archived\" (Inbox / Archive)\n- **not_booked** \u2013 true/false\n- **tags** \u2013 \"Transportation, Restaurants\" (comma separated list)\n- **date** \u2013 date range in the form _2020-02-01:2020-02-22_\n- **unpaid** \u2013 filter only purchases without a payment\n- **payment_method** \u2013 possible values are: \"bank_transfer\", \"direct_debit\", \"credit_card\", \"paypal\" or \"cash\", \"bank_transfer_swiss_qr_esr\"\n- **receipt_identifier** \u2013 filter by the receipts invoice number, e.g. R2023-1234. It must be unique scoped by supplier.\n- **identifier** \u2013 filter by purchase identifier, e.g. E2312-0001\n\nReturns an array with all purchases information (see attributes)."
+      tags:
+        - Purchases
+      security:
+        -
+          TokenAuth:
+            []
+      parameters:
+        -
+          $ref: "#/components/parameters/Ids"
+        -
+          $ref: "#/components/parameters/UpdatedAfter"
+        -
+          $ref: "#/components/parameters/CustomProperties"
+        -
+          $ref: "#/components/parameters/Page"
+        -
+          $ref: "#/components/parameters/PerPage"
+        -
+          $ref: "#/components/parameters/SortBy"
+      responses:
+        200:
+          description: "Retrieve all purchases:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/purchases' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nIt's also possible to filter:\n\n- [Global filters apply](../entities#global-filters)\n- **category_id** \u2013 identifier of the purchases' category,\n- **term** \u2013 full text search on purchase positions,\n- **company_id** \u2013 identifier of the supplier, pass _0_ to get the purchases not associated to a supplier,\n- **status** \u2013 \"pending\" or \"archived\" (Inbox / Archive)\n- **not_booked** \u2013 true/false\n- **tags** \u2013 \"Transportation, Restaurants\" (comma separated list)\n- **date** \u2013 date range in the form _2020-02-01:2020-02-22_\n- **unpaid** \u2013 filter only purchases without a payment\n- **payment_method** \u2013 possible values are: \"bank_transfer\", \"direct_debit\", \"credit_card\", \"paypal\" or \"cash\", \"bank_transfer_swiss_qr_esr\"\n- **receipt_identifier** \u2013 filter by the receipts invoice number, e.g."
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Purchases"
+              examples:
+                example:
+                  value:
+                    -
+                      id: 987
+                      identifier: "E2016-0001"
+                      receipt_identifier: KK121
+                      title: SBB Ticket
+                      info: null
+                      iban: CH3908704016075473007
+                      reference: null
+                      date: "2020-02-28"
+                      due_date: null
+                      service_period_from: "2020-02-28"
+                      service_period_to: "2020-02-28"
+                      status: pending
+                      payment_method: bank_transfer
+                      net_total: 44.88
+                      gross_total: 46.0
+                      currency: CHF
+                      file_url: null
+                      custom_properties:
+                        Various: some stuff
+                      tags:
+                        - Transportation
+                      approval_status: approved
+                      company:
+                        id: 5552
+                        name: Schweizerische Bundesbahnen SBB
+                        iban: CH3908704016075473007
+                      payments:
+                        []
+                      user:
+                        id: 433109936
+                        firstname: Mario
+                        name: Rossi
+                      refund_request:
+                        id: 66129936
+                        comment: My receipts
+                        user_id: 123456
+                      credit_card_transaction:
+                        source: pliant
+                        transaction_identifier: "57a04fc8-a56e-4be6-acb2-241b513f0570"
+                      items:
+                        -
+                          id: 311936153
+                          title: SBB Ticket
+                          net_total: 44.88
+                          tax_total: 1.12
+                          tax: 2.5
+                          vat:
+                            tax: 2.5
+                            reverse_charge: false
+                            intra_eu: false
+                            active: true
+                          tax_included: true
+                          gross_total: 46.0
+                          category:
+                            id: 671034328
+                            name: Spesen und Reisekosten
+                            credit_account: 6640
+                          supplier_credit_number: 70001
+                          expense:
+                            id: 7655423
+                            project:
+                              id: 23345545
+                              company_id: 54345
+                          receipt:
+                            id: 9857765
+                            title: SBB Ticket
+                            date: "2018-10-01"
+                            attachment_url: "https://..."
+                      created_at: "2018-10-17T09:33:46Z"
+                      updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getPurchasesPurchases
+    post:
+      summary: POST /purchases
+      description: "Create a purchase:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/purchases' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '\n    {\n      \"date\": \"2020-02-02\",\n      \"currency\": \"EUR\",\n      \"payment_method\": \"bank_transfer\",\n      \"receipt_identifier\": \"XXLA\",\n      \"custom_properties\": { \"Various\": \"Stuff\" },\n      \"items\": [\n        {\n          \"title\": \"Ticket\",\n          \"total\": 30,\n          \"tax\": 10,\n          \"tax_included\": true\n        }\n      ],\n      \"file\": {\n        \"filename\": \"document.pdf\",\n        \"base64\": \"JVBERi0xLjQKJeLjz9MKNCAwIG9iago8PC9GaWx...\"\n      }\n    }'\n```\n\nMandatory fields are marked with a star (\\*):\n\n- **date\\*** \u2013 \"2020-02-02\"\n- **currency\\*** \u2013 \"CHF\" (a valid currency of the account)\n- **payment_method\\*** \u2013 \"bank_transfer\", \"direct_debit\", \"credit_card\", \"paypal\", \"cash\", \"bank_transfer_swiss_qr_esr\"\n- **title** \u2013 set the title for this purchase. If left out, the title is generated from the positions.\n- **items\\*** \u2013 list of position. At least one position must be present and every position has the following fields:\n  - **title\\*** \u2013 Ticket\n  - **total\\*** \u2013 30\n  - **tax\\*** \u2013 7.7 (tax percentage)\n  - **tax_included** \u2013 true (specify if the total includes the tax or not)\n  - **category_id** \u2013 123 (reference to a purchase category)\n- **due_date** \u2013 \"2020-02-18\"\n- **service_period_from** \u2013 \"2020-01-01\"\n- **service_period_to** \u2013 \"2020-01-31\"\n- **status** - \"pending\" or \"archived\"\n- **due_date** \u2013 \"2020-02-18\"\n- **company_id** \u2013 211 (reference to the supplier)\n- **user_id** \u2013 123 (reference to the responsible user)\n- **receipt_identifier** \u2013 123\n- **info** \u2013 free text\n- **iban** \u2013 CH123\n- **reference** \u2013 ref\n- **custom_property_values** \u2013 {\"Field\": \"Value}\n- **file** \u2013 file attached to the purchase, with the following fields:\n  - filename \u2013 \"document.pdf\"\n  - base64 \u2013 base64 encoded content of the file\n- **tags** \u2013 [\"Label1\", \"Label2\"]"
+      tags:
+        - Purchases
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        201:
+          description: "Create a purchase:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/purchases' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '\n    {\n      \"date\": \"2020-02-02\",\n      \"currency\": \"EUR\",\n      \"payment_method\": \"bank_transfer\",\n      \"receipt_identifier\": \"XXLA\",\n      \"custom_properties\": { \"Various\": \"Stuff\" },\n      \"items\": [\n        {\n          \"title\": \"Ticket\",\n          \"total\": 30,\n          \"tax\": 10,\n          \"tax_included\": true\n        }\n      ],\n      \"file\": {\n        \"filename\": \"document.pdf\",\n        \"base64\": \"JVBERi0xLjQKJeLjz9MKNCAwIG9iago8PC9GaWx...\"\n      }\n    }'\n```\n\nMandatory fields are marked with a star (\\*):\n\n- **date\\*** \u2013 \"2020-02-02\"\n- **currency\\*** \u2013 \"CHF\" (a valid currency of the account)\n- **payment_method\\*** \u2013 \"bank_transfer\", \"direct_debit\", \"credit_card\", \"paypal\", \"cash\", \"bank_transfer_swiss_qr_esr\"\n- **title** \u2013 set the title for this purchase."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchases"
+              examples:
+                example:
+                  value:
+                    id: 987
+                    identifier: "E2016-0001"
+                    receipt_identifier: KK121
+                    title: SBB Ticket
+                    info: null
+                    iban: CH3908704016075473007
+                    reference: null
+                    date: "2020-02-28"
+                    due_date: null
+                    service_period_from: "2020-02-28"
+                    service_period_to: "2020-02-28"
+                    status: pending
+                    payment_method: bank_transfer
+                    net_total: 44.88
+                    gross_total: 46.0
+                    currency: CHF
+                    file_url: null
+                    custom_properties:
+                      Various: some stuff
+                    tags:
+                      - Transportation
+                    approval_status: approved
+                    company:
+                      id: 5552
+                      name: Schweizerische Bundesbahnen SBB
+                      iban: CH3908704016075473007
+                    payments:
+                      []
+                    user:
+                      id: 433109936
+                      firstname: Mario
+                      name: Rossi
+                    refund_request:
+                      id: 66129936
+                      comment: My receipts
+                      user_id: 123456
+                    credit_card_transaction:
+                      source: pliant
+                      transaction_identifier: "57a04fc8-a56e-4be6-acb2-241b513f0570"
+                    items:
+                      -
+                        id: 311936153
+                        title: SBB Ticket
+                        net_total: 44.88
+                        tax_total: 1.12
+                        tax: 2.5
+                        vat:
+                          tax: 2.5
+                          reverse_charge: false
+                          intra_eu: false
+                          active: true
+                        tax_included: true
+                        gross_total: 46.0
+                        category:
+                          id: 671034328
+                          name: Spesen und Reisekosten
+                          credit_account: 6640
+                        supplier_credit_number: 70001
+                        expense:
+                          id: 7655423
+                          project:
+                            id: 23345545
+                            company_id: 54345
+                        receipt:
+                          id: 9857765
+                          title: SBB Ticket
+                          date: "2018-10-01"
+                          attachment_url: "https://..."
+                    created_at: "2018-10-17T09:33:46Z"
+                    updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Purchases"
+            examples:
+              example:
+                value:
+                  id: 987
+                  identifier: "E2016-0001"
+                  receipt_identifier: KK121
+                  title: SBB Ticket
+                  info: null
+                  iban: CH3908704016075473007
+                  reference: null
+                  date: "2020-02-28"
+                  due_date: null
+                  service_period_from: "2020-02-28"
+                  service_period_to: "2020-02-28"
+                  status: pending
+                  payment_method: bank_transfer
+                  net_total: 44.88
+                  gross_total: 46.0
+                  currency: CHF
+                  file_url: null
+                  custom_properties:
+                    Various: some stuff
+                  tags:
+                    - Transportation
+                  approval_status: approved
+                  company:
+                    id: 5552
+                    name: Schweizerische Bundesbahnen SBB
+                    iban: CH3908704016075473007
+                  payments:
+                    []
+                  user:
+                    id: 433109936
+                    firstname: Mario
+                    name: Rossi
+                  refund_request:
+                    id: 66129936
+                    comment: My receipts
+                    user_id: 123456
+                  credit_card_transaction:
+                    source: pliant
+                    transaction_identifier: "57a04fc8-a56e-4be6-acb2-241b513f0570"
+                  items:
+                    -
+                      id: 311936153
+                      title: SBB Ticket
+                      net_total: 44.88
+                      tax_total: 1.12
+                      tax: 2.5
+                      vat:
+                        tax: 2.5
+                        reverse_charge: false
+                        intra_eu: false
+                        active: true
+                      tax_included: true
+                      gross_total: 46.0
+                      category:
+                        id: 671034328
+                        name: Spesen und Reisekosten
+                        credit_account: 6640
+                      supplier_credit_number: 70001
+                      expense:
+                        id: 7655423
+                        project:
+                          id: 23345545
+                          company_id: 54345
+                      receipt:
+                        id: 9857765
+                        title: SBB Ticket
+                        date: "2018-10-01"
+                        attachment_url: "https://..."
+                  created_at: "2018-10-17T09:33:46Z"
+                  updated_at: "2018-10-17T09:33:46Z"
+      operationId: postPurchasesPurchases
+  /purchases/{id}:
+    get:
+      summary: "GET /purchases/{id}"
+      description: "Retrieve a single purchase:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/purchases/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nReturns the representation for a single purchase."
+      tags:
+        - Purchases
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Retrieve a single purchase:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/purchases/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nReturns the representation for a single purchase."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchases"
+              examples:
+                example:
+                  value:
+                    id: 987
+                    identifier: "E2016-0001"
+                    receipt_identifier: KK121
+                    title: SBB Ticket
+                    info: null
+                    iban: CH3908704016075473007
+                    reference: null
+                    date: "2020-02-28"
+                    due_date: null
+                    service_period_from: "2020-02-28"
+                    service_period_to: "2020-02-28"
+                    status: pending
+                    payment_method: bank_transfer
+                    net_total: 44.88
+                    gross_total: 46.0
+                    currency: CHF
+                    file_url: null
+                    custom_properties:
+                      Various: some stuff
+                    tags:
+                      - Transportation
+                    approval_status: approved
+                    company:
+                      id: 5552
+                      name: Schweizerische Bundesbahnen SBB
+                      iban: CH3908704016075473007
+                    payments:
+                      []
+                    user:
+                      id: 433109936
+                      firstname: Mario
+                      name: Rossi
+                    refund_request:
+                      id: 66129936
+                      comment: My receipts
+                      user_id: 123456
+                    credit_card_transaction:
+                      source: pliant
+                      transaction_identifier: "57a04fc8-a56e-4be6-acb2-241b513f0570"
+                    items:
+                      -
+                        id: 311936153
+                        title: SBB Ticket
+                        net_total: 44.88
+                        tax_total: 1.12
+                        tax: 2.5
+                        vat:
+                          tax: 2.5
+                          reverse_charge: false
+                          intra_eu: false
+                          active: true
+                        tax_included: true
+                        gross_total: 46.0
+                        category:
+                          id: 671034328
+                          name: Spesen und Reisekosten
+                          credit_account: 6640
+                        supplier_credit_number: 70001
+                        expense:
+                          id: 7655423
+                          project:
+                            id: 23345545
+                            company_id: 54345
+                        receipt:
+                          id: 9857765
+                          title: SBB Ticket
+                          date: "2018-10-01"
+                          attachment_url: "https://..."
+                    created_at: "2018-10-17T09:33:46Z"
+                    updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getPurchasesIdPurchases
+    put:
+      summary: "PUT /purchases/{id}"
+      description: "Update a purchase:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/purchases/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"date\": \"2020-02-02\",\n        \"currency\": \"EUR\",\n        \"payment_method\": \"bank_transfer\",\n        \"receipt_identifier\": \"XXLA\",\n      }'\n```\n\nFields are analogous to the POST request, update of purchase's items is at the moment **NOT** supported."
+      tags:
+        - Purchases
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Update a purchase:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/purchases/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"date\": \"2020-02-02\",\n        \"currency\": \"EUR\",\n        \"payment_method\": \"bank_transfer\",\n        \"receipt_identifier\": \"XXLA\",\n      }'\n```\n\nFields are analogous to the POST request, update of purchase's items is at the moment **NOT** supported."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchases"
+              examples:
+                example:
+                  value:
+                    date: "2020-02-02"
+                    currency: EUR
+                    payment_method: bank_transfer
+                    receipt_identifier: XXLA
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Purchases"
+            examples:
+              example:
+                value:
+                  date: "2020-02-02"
+                  currency: EUR
+                  payment_method: bank_transfer
+                  receipt_identifier: XXLA
+      operationId: putPurchasesIdPurchases
+    delete:
+      summary: "DELETE /purchases/{id}"
+      description: "Deletes a purchase. It's possible only if the status is _pending_ and no payments have been registered.\n\n```bash\ncurl -X DELETE \\\n  'https://{domain}.mocoapp.com/api/v1/purchases/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```"
+      tags:
+        - Purchases
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        204:
+          description: Deletes a purchase.
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: deletePurchasesIdPurchases
+  /purchases/{id}/assign_to_project:
+    post:
+      summary: "POST /purchases/{id}/assign_to_project"
+      description: "Assign a purchase item to a project by creating or linking to an expense in the project.\nThe assignment has to be done per line item explicitly.\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/purchases/{id}/assign_to_project' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '\n    {\n      \"item_id\": 311936153,\n      \"project_id\": 23345545,\n      \"expense_id\": 7655423,\n      \"notify_project_leader\": true,\n      \"billable\": true,\n      \"budget_relevant\": true,\n      \"surcharge\": true\n    }'\n```\n\nMandatory fields are marked with a star (*):\n\n- **item_id*** \u2013 311936153 (reference to the purchase item)\n- **project_id*** \u2013 23345545 (reference to the project)\n- expense_id \u2013 7655423 (reference to the project expense, if empty, a new one is created)\n- notify_project_leader \u2013 true (send a notification to the project if an expense is created)\n- surcharge \u2013 true/false (if provided in account settings, the surcharge will be applied)\n\nThe following fields will override account settings only if provided:\n\n- billable \u2013 true (if the expense is billable)\n- budget_relevant \u2013 true (if the expense is budget relevant)"
+      tags:
+        - Purchases
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        201:
+          description: Assign a purchase item to a project by creating or linking to an expense in the project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchases"
+              examples:
+                example:
+                  value:
+                    id: 987
+                    identifier: "E2016-0001"
+                    receipt_identifier: KK121
+                    title: SBB Ticket
+                    info: null
+                    iban: CH3908704016075473007
+                    reference: null
+                    date: "2020-02-28"
+                    due_date: null
+                    service_period_from: "2020-02-28"
+                    service_period_to: "2020-02-28"
+                    status: pending
+                    payment_method: bank_transfer
+                    net_total: 44.88
+                    gross_total: 46.0
+                    currency: CHF
+                    file_url: null
+                    custom_properties:
+                      Various: some stuff
+                    tags:
+                      - Transportation
+                    approval_status: approved
+                    company:
+                      id: 5552
+                      name: Schweizerische Bundesbahnen SBB
+                      iban: CH3908704016075473007
+                    payments:
+                      []
+                    user:
+                      id: 433109936
+                      firstname: Mario
+                      name: Rossi
+                    refund_request:
+                      id: 66129936
+                      comment: My receipts
+                      user_id: 123456
+                    credit_card_transaction:
+                      source: pliant
+                      transaction_identifier: "57a04fc8-a56e-4be6-acb2-241b513f0570"
+                    items:
+                      -
+                        id: 311936153
+                        title: SBB Ticket
+                        net_total: 44.88
+                        tax_total: 1.12
+                        tax: 2.5
+                        vat:
+                          tax: 2.5
+                          reverse_charge: false
+                          intra_eu: false
+                          active: true
+                        tax_included: true
+                        gross_total: 46.0
+                        category:
+                          id: 671034328
+                          name: Spesen und Reisekosten
+                          credit_account: 6640
+                        supplier_credit_number: 70001
+                        expense:
+                          id: 7655423
+                          project:
+                            id: 23345545
+                            company_id: 54345
+                        receipt:
+                          id: 9857765
+                          title: SBB Ticket
+                          date: "2018-10-01"
+                          attachment_url: "https://..."
+                    created_at: "2018-10-17T09:33:46Z"
+                    updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Purchases"
+            examples:
+              example:
+                value:
+                  id: 987
+                  identifier: "E2016-0001"
+                  receipt_identifier: KK121
+                  title: SBB Ticket
+                  info: null
+                  iban: CH3908704016075473007
+                  reference: null
+                  date: "2020-02-28"
+                  due_date: null
+                  service_period_from: "2020-02-28"
+                  service_period_to: "2020-02-28"
+                  status: pending
+                  payment_method: bank_transfer
+                  net_total: 44.88
+                  gross_total: 46.0
+                  currency: CHF
+                  file_url: null
+                  custom_properties:
+                    Various: some stuff
+                  tags:
+                    - Transportation
+                  approval_status: approved
+                  company:
+                    id: 5552
+                    name: Schweizerische Bundesbahnen SBB
+                    iban: CH3908704016075473007
+                  payments:
+                    []
+                  user:
+                    id: 433109936
+                    firstname: Mario
+                    name: Rossi
+                  refund_request:
+                    id: 66129936
+                    comment: My receipts
+                    user_id: 123456
+                  credit_card_transaction:
+                    source: pliant
+                    transaction_identifier: "57a04fc8-a56e-4be6-acb2-241b513f0570"
+                  items:
+                    -
+                      id: 311936153
+                      title: SBB Ticket
+                      net_total: 44.88
+                      tax_total: 1.12
+                      tax: 2.5
+                      vat:
+                        tax: 2.5
+                        reverse_charge: false
+                        intra_eu: false
+                        active: true
+                      tax_included: true
+                      gross_total: 46.0
+                      category:
+                        id: 671034328
+                        name: Spesen und Reisekosten
+                        credit_account: 6640
+                      supplier_credit_number: 70001
+                      expense:
+                        id: 7655423
+                        project:
+                          id: 23345545
+                          company_id: 54345
+                      receipt:
+                        id: 9857765
+                        title: SBB Ticket
+                        date: "2018-10-01"
+                        attachment_url: "https://..."
+                  created_at: "2018-10-17T09:33:46Z"
+                  updated_at: "2018-10-17T09:33:46Z"
+      operationId: postPurchasesIdAssign_To_ProjectPurchases
+  /purchases/{id}/update_status:
+    patch:
+      summary: "PATCH /purchases/{id}/update_status"
+      description: "Updates the purchase status:\n\n```bash\ncurl -X PATCH \\\n  'https://{domain}.mocoapp.com/api/v1/purchases/{id}/update_status' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '\n    {\n      \"status\": \"archived\"\n    }'\n```\n\n- **status\\*** \u2013 \"pending\", \"archived\""
+      tags:
+        - Purchases
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Updates the purchase status:\n\n```bash\ncurl -X PATCH \\\n  'https://{domain}.mocoapp.com/api/v1/purchases/{id}/update_status' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '\n    {\n      \"status\": \"archived\"\n    }'\n```\n\n- **status\\*** \u2013 \"pending\", \"archived\""
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchases"
+              examples:
+                example:
+                  value:
+                    id: 987
+                    identifier: "E2016-0001"
+                    receipt_identifier: KK121
+                    title: SBB Ticket
+                    info: null
+                    iban: CH3908704016075473007
+                    reference: null
+                    date: "2020-02-28"
+                    due_date: null
+                    service_period_from: "2020-02-28"
+                    service_period_to: "2020-02-28"
+                    status: pending
+                    payment_method: bank_transfer
+                    net_total: 44.88
+                    gross_total: 46.0
+                    currency: CHF
+                    file_url: null
+                    custom_properties:
+                      Various: some stuff
+                    tags:
+                      - Transportation
+                    approval_status: approved
+                    company:
+                      id: 5552
+                      name: Schweizerische Bundesbahnen SBB
+                      iban: CH3908704016075473007
+                    payments:
+                      []
+                    user:
+                      id: 433109936
+                      firstname: Mario
+                      name: Rossi
+                    refund_request:
+                      id: 66129936
+                      comment: My receipts
+                      user_id: 123456
+                    credit_card_transaction:
+                      source: pliant
+                      transaction_identifier: "57a04fc8-a56e-4be6-acb2-241b513f0570"
+                    items:
+                      -
+                        id: 311936153
+                        title: SBB Ticket
+                        net_total: 44.88
+                        tax_total: 1.12
+                        tax: 2.5
+                        vat:
+                          tax: 2.5
+                          reverse_charge: false
+                          intra_eu: false
+                          active: true
+                        tax_included: true
+                        gross_total: 46.0
+                        category:
+                          id: 671034328
+                          name: Spesen und Reisekosten
+                          credit_account: 6640
+                        supplier_credit_number: 70001
+                        expense:
+                          id: 7655423
+                          project:
+                            id: 23345545
+                            company_id: 54345
+                        receipt:
+                          id: 9857765
+                          title: SBB Ticket
+                          date: "2018-10-01"
+                          attachment_url: "https://..."
+                    created_at: "2018-10-17T09:33:46Z"
+                    updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Purchases"
+            examples:
+              example:
+                value:
+                  id: 987
+                  identifier: "E2016-0001"
+                  receipt_identifier: KK121
+                  title: SBB Ticket
+                  info: null
+                  iban: CH3908704016075473007
+                  reference: null
+                  date: "2020-02-28"
+                  due_date: null
+                  service_period_from: "2020-02-28"
+                  service_period_to: "2020-02-28"
+                  status: pending
+                  payment_method: bank_transfer
+                  net_total: 44.88
+                  gross_total: 46.0
+                  currency: CHF
+                  file_url: null
+                  custom_properties:
+                    Various: some stuff
+                  tags:
+                    - Transportation
+                  approval_status: approved
+                  company:
+                    id: 5552
+                    name: Schweizerische Bundesbahnen SBB
+                    iban: CH3908704016075473007
+                  payments:
+                    []
+                  user:
+                    id: 433109936
+                    firstname: Mario
+                    name: Rossi
+                  refund_request:
+                    id: 66129936
+                    comment: My receipts
+                    user_id: 123456
+                  credit_card_transaction:
+                    source: pliant
+                    transaction_identifier: "57a04fc8-a56e-4be6-acb2-241b513f0570"
+                  items:
+                    -
+                      id: 311936153
+                      title: SBB Ticket
+                      net_total: 44.88
+                      tax_total: 1.12
+                      tax: 2.5
+                      vat:
+                        tax: 2.5
+                        reverse_charge: false
+                        intra_eu: false
+                        active: true
+                      tax_included: true
+                      gross_total: 46.0
+                      category:
+                        id: 671034328
+                        name: Spesen und Reisekosten
+                        credit_account: 6640
+                      supplier_credit_number: 70001
+                      expense:
+                        id: 7655423
+                        project:
+                          id: 23345545
+                          company_id: 54345
+                      receipt:
+                        id: 9857765
+                        title: SBB Ticket
+                        date: "2018-10-01"
+                        attachment_url: "https://..."
+                  created_at: "2018-10-17T09:33:46Z"
+                  updated_at: "2018-10-17T09:33:46Z"
+      operationId: patchPurchasesIdUpdate_StatusPurchases
+  /purchases/{id}/store_document:
+    patch:
+      summary: "PATCH /purchases/{id}/store_document"
+      description: "Submits the purchase's document using `multipart/form-data` format if it has to be changed afterwards or was not submitted\nwith the initial creation.\n\n```bash\ncurl -X PATCH \\\n  'https://{domain}.mocoapp.com/api/v1/purchases/{id}/store_document' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -F file=@/path/to/file.pdf\n```\n\n- **file\\*** \u2013 path to the document to store"
+      tags:
+        - Purchases
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Submits the purchase's document using `multipart/form-data` format if it has to be changed afterwards or was not submitted\nwith the initial creation."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Purchases"
+              examples:
+                example:
+                  value:
+                    id: 987
+                    identifier: "E2016-0001"
+                    receipt_identifier: KK121
+                    title: SBB Ticket
+                    info: null
+                    iban: CH3908704016075473007
+                    reference: null
+                    date: "2020-02-28"
+                    due_date: null
+                    service_period_from: "2020-02-28"
+                    service_period_to: "2020-02-28"
+                    status: pending
+                    payment_method: bank_transfer
+                    net_total: 44.88
+                    gross_total: 46.0
+                    currency: CHF
+                    file_url: null
+                    custom_properties:
+                      Various: some stuff
+                    tags:
+                      - Transportation
+                    approval_status: approved
+                    company:
+                      id: 5552
+                      name: Schweizerische Bundesbahnen SBB
+                      iban: CH3908704016075473007
+                    payments:
+                      []
+                    user:
+                      id: 433109936
+                      firstname: Mario
+                      name: Rossi
+                    refund_request:
+                      id: 66129936
+                      comment: My receipts
+                      user_id: 123456
+                    credit_card_transaction:
+                      source: pliant
+                      transaction_identifier: "57a04fc8-a56e-4be6-acb2-241b513f0570"
+                    items:
+                      -
+                        id: 311936153
+                        title: SBB Ticket
+                        net_total: 44.88
+                        tax_total: 1.12
+                        tax: 2.5
+                        vat:
+                          tax: 2.5
+                          reverse_charge: false
+                          intra_eu: false
+                          active: true
+                        tax_included: true
+                        gross_total: 46.0
+                        category:
+                          id: 671034328
+                          name: Spesen und Reisekosten
+                          credit_account: 6640
+                        supplier_credit_number: 70001
+                        expense:
+                          id: 7655423
+                          project:
+                            id: 23345545
+                            company_id: 54345
+                        receipt:
+                          id: 9857765
+                          title: SBB Ticket
+                          date: "2018-10-01"
+                          attachment_url: "https://..."
+                    created_at: "2018-10-17T09:33:46Z"
+                    updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Purchases"
+            examples:
+              example:
+                value:
+                  id: 987
+                  identifier: "E2016-0001"
+                  receipt_identifier: KK121
+                  title: SBB Ticket
+                  info: null
+                  iban: CH3908704016075473007
+                  reference: null
+                  date: "2020-02-28"
+                  due_date: null
+                  service_period_from: "2020-02-28"
+                  service_period_to: "2020-02-28"
+                  status: pending
+                  payment_method: bank_transfer
+                  net_total: 44.88
+                  gross_total: 46.0
+                  currency: CHF
+                  file_url: null
+                  custom_properties:
+                    Various: some stuff
+                  tags:
+                    - Transportation
+                  approval_status: approved
+                  company:
+                    id: 5552
+                    name: Schweizerische Bundesbahnen SBB
+                    iban: CH3908704016075473007
+                  payments:
+                    []
+                  user:
+                    id: 433109936
+                    firstname: Mario
+                    name: Rossi
+                  refund_request:
+                    id: 66129936
+                    comment: My receipts
+                    user_id: 123456
+                  credit_card_transaction:
+                    source: pliant
+                    transaction_identifier: "57a04fc8-a56e-4be6-acb2-241b513f0570"
+                  items:
+                    -
+                      id: 311936153
+                      title: SBB Ticket
+                      net_total: 44.88
+                      tax_total: 1.12
+                      tax: 2.5
+                      vat:
+                        tax: 2.5
+                        reverse_charge: false
+                        intra_eu: false
+                        active: true
+                      tax_included: true
+                      gross_total: 46.0
+                      category:
+                        id: 671034328
+                        name: Spesen und Reisekosten
+                        credit_account: 6640
+                      supplier_credit_number: 70001
+                      expense:
+                        id: 7655423
+                        project:
+                          id: 23345545
+                          company_id: 54345
+                      receipt:
+                        id: 9857765
+                        title: SBB Ticket
+                        date: "2018-10-01"
+                        attachment_url: "https://..."
+                  created_at: "2018-10-17T09:33:46Z"
+                  updated_at: "2018-10-17T09:33:46Z"
+      operationId: patchPurchasesIdStore_DocumentPurchases

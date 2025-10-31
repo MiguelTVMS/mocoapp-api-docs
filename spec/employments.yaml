@@ -1,0 +1,368 @@
+openapi: 3.1.0
+info:
+  title: User Employments API
+  version: 1.0.0
+  description: "German: \"Wochenmodell\"\n\n- TOC\n\n## General\n- Request payloads to MOCO must be sent as valid JSON with a mandatory `Content-Type: application/json`-header. Responses are also sent as JSON.\n- All requests have to be [authenticated](authentication) with a key\n- Example responses showcase the happy case, i.e. usually the `200 OK` response\n- Collections are usually [paginated](#pagination)\n- Zapier triggers are **not** triggered for API requests\n- Timestamps `created_at` and `updated_at` are sent for all entities in UTC, as ISO8601 format.\n- For synchronization almost all resources can be filtered by `updated_after` passing a time in UTC, as ISO8601 format.\n- MOCO does not support any client-libraries at the moment. However, there are currently the following unofficial clients available, which you can use at your risk: [Python Client](https://github.com/sommalia/moco-wrapper)\n\n## Entities\nAll the entities exposed via the API can be found in their [respective sections](entities.md)\n\n## Client Implementations / API Wrappers\nHere's a list of API client implementations, not maintained by us. Feel free to open up a PR to point to your implementation so others can re-use it.\n\n| Language |                Repository                                                                            |\n| :------: | :-------------------------------------------------------------------------------------------------:  |\n| Python   | [https://github.com/sommalia/moco-wrapper](https://github.com/sommalia/moco-wrapper)                 |\n| PHP      | [https://github.com/mbs-hub/moco-php](https://github.com/mbs-hub/moco-php)                           |\n| Ruby     | [https://github.com/starsong-consulting/moco-ruby](https://github.com/starsong-consulting/moco-ruby) |\n\n## Impersonation\nBy default all requests are scoped to the authenticated user. Some resources cannot be provided with a `user_id` or similar, like `Activities` and `User Presences`. This reflects the behaviour in the UI, since every user can only create their own activities or presences. But you can login as another user provided that the authenticated user has permission to _Staff_. To achieve the same behaviour in the API, one can set the following x-header:\n\n`X-IMPERSONATE-USER-ID=123` (user id to act in behalf of)\n\n## Rate Limiting\nYou can expect to be able to send 120 requests per 2 minutes (~ 1 request per second). For the unlimited plan, its 1200 requests per 2 minutes (~ 10 per second). If you exceed this limit, the server responds with `429 Too Many Requests`.\n\n## Pagination\nResponses are paginated with a common default of 100 entries per page. In the HTTP response header, the current page, the entries per page and the number of total entries is reported. There is also a link header to links to the consecutive page.\n\n- **X-Page** \u2013 3\n- **X-Per-Page** \u2013 100\n- **X-Total** \u2013 415\n- **Link** \u2013 `<https://{domain}.mocoapp.com/api/v1/projects.json?page=4>; rel=\"next\"`\n\nIf there is not Link header with `rel=\"next\"`, the current page is the last page.\n\n## Errors and HTTP status codes\nThe MOCO-API is mostly conformant with the [general HTTP status codes](https://en.wikipedia.org/wiki/List_of_HTTP_status_codes).\n\nHere are the most comment errors you will see:\n\n- **401 Unauthorized** - Check the error message in the response body\n- **403 Forbidden** - Check your [Authentication](#authentication) or your MOCO user permission\n- **404 Not Found** - Check that resource exists (maybe it was deleted in the meantime)\n- **422 Unprocessable Entity** - Check the provided error message in the response body\n- **429 Too Many Requests** - Check [Rate Limiting](#rate-limiting)\n\nSorting is controlled by the `sort_by` query parameter. Its value is the field name that should be sorted, followed by an optional sorting order (`asc` or `desc`, default is `asc`).\n\nExample:\n\n- `https://{domain}.mocoapp.com/api/v1/offers?sort_by=title desc`"
+servers:
+  -
+    url: "https://{domain}.mocoapp.com/api/v1"
+    description: Base server URL for the MOCO API.
+tags:
+  -
+    name: User Employments
+    description: "German: \"Wochenmodell\"\n\n- TOC"
+components:
+  securitySchemes:
+    TokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: "There's two ways to authenticate against MOCO:\n\n1. **User API key**. Can be found under the \"Integrations\" tab on the profile page.\n2. **Account API key**. Has to be created in Settings > Extensions > API & Webhooks, with either read-only or full access on all endpoints.\n\nBoth kinds of keys are provided as an Authorization header.\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/projects.json' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis key can also be requested via API for user-specific keys:\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/session \\\n  -H 'Accept: application/json' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"email\": \"max@muster.de\",\n    \"password\": \"secret\"\n  }'\n```\n\nIt's also possible to verify if the API key is still valid:\n\n```bash\ncurl https://{domain}.mocoapp.com/api/v1/session \\\n  -H 'Accept: application/json' \\\n  -H 'Content-Type: application/json'\n```\n\nIf the key is valid, the response code id `200 ok` and the body is:\n\n```json\n{\n  \"id\": 123,\n  \"uuid\": \"aec324a2-4832-11eb-b378-0242ac130002\"\n}\n```\n\notherwise the response code is `401 unauthorized`.\nThere are a few tools to try out the MOCO API. All the examples in this documentation use `curl` to demonstrate the API endpoint.\nA popular graphical UI for REST is [Postman](https://www.postman.com/). Here's an example request for the projects list including the authentication:\n\n![Postman example request](moco-api-postman.png \"Postman example request\")"
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: Pagination support as described in the general documentation.
+      schema:
+        type: integer
+        minimum: 1
+    PerPage:
+      name: per_page
+      in: query
+      description: Number of items per page for paginated responses.
+      schema:
+        type: integer
+        minimum: 1
+    SortBy:
+      name: sort_by
+      in: query
+      description: Sorting is controlled by the `sort_by` query parameter. Provide the field name and optional order (asc or desc).
+      schema:
+        type: string
+    Ids:
+      name: ids
+      in: query
+      description: "Usage: `GET /api/v1/entities?ids=123,456`\n\nAllows you to filter by comma-separated IDs and fetch multiple entities."
+      schema:
+        type: string
+    UpdatedAfter:
+      name: updated_after
+      in: query
+      description: "Usage: `GET /api/v1/entities?updated_after=2022-04-20T09:17:58Z` (ISO8601 timestamp)\n\nEnables you to give a timestamp for all entities that are created or updated after this timestamp, especially useful for synchronisation purposes.\n\nCombine it with a [webhook subscription](webhooks) on DELETE for the entity to have a complete synchronisation."
+      schema:
+        type: string
+        format: "date-time"
+    CustomProperties:
+      name: custom_properties
+      in: query
+      description: "Allows you to filter entities by one or more custom fields. The filter for the custom fields is passed via the query-parameter `custom_properties`. To query entities that contain the value \"Automotive\" in a custom field named \"Sector\", the query would need to be as follows:\n\n`GET /api/v1/entities?custom_properties[Sector]=Automotive`\n\nFiltering by an unknown custom field will result in an empty result set!"
+      schema:
+        type: object
+        additionalProperties: true
+      style: deepObject
+      explode: true
+  schemas:
+    ErrorResponse:
+      type: object
+      description: Generic error response body.
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      additionalProperties: true
+    UserEmployments:
+      type: object
+      description: "Employments contain among the standard fields also:\n\n- User\n\n```json\n{\n  \"id\": 982237015,\n  \"weekly_target_hours\": 29.75,\n  \"pattern\": {\n    \"am\": [0, 4.25, 4.25, 4.25, 4.25],\n    \"pm\": [0, 4.25, 4.25, 4.25, 0]\n  },\n  \"from\": \"2017-01-01\",\n  \"to\": null,\n  \"user\": {\n    \"id\": 933590696,\n    \"firstname\": \"John\",\n    \"lastname\": \"Doe\"\n  },\n  \"created_at\": \"2018-10-17T09:33:46Z\",\n  \"updated_at\": \"2018-10-17T09:33:46Z\"\n}\n```\n\nCustom fields reference:\nMOCO supports saving custom fields to many of its resources. These custom fields are readable and writable via the `custom_properties` field.\n\n Custom fields must first be defined in the MOCO settings.\n\n The size of the custom_properties field is limitted to 12 kB.\n\n```json\n\"custom_properties\": {\n    \"UID\": \"123-UID-456\",\n    \"Line of business\": \"Automotive\"\n}\n```\n\nParameters are sent with their name as key:\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/customers \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"name\": \"Beispiel AG\",\n    \"currency\": \"CHF\",\n    \"custom_properties\": {\n      \"Line of business\": \"Automotive\"\n    }\n  }'\n```\n\nAll values are encoded as strings, expect for Multiple Choice, which is encoded as an array.\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/customers \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"custom_properties\": {\n          \"Line of business\": [\"Automotive\", \"Banking\"]\n        }\n      }'\n```\n\n- Single-line input \u2013 \"Automotive\"\n- Mehrzeilige Eingabe \u2013 \"A multiline input...\"\n- Link \u2013 \"https://www...\"\n- Date \u2013 \"2021-12-31\"\n- Yes/No \u2013 \"0\", \"1\" (0 = No, 1 = Yes)\n- Single choice \u2013 \"Value\"\n- Multiple choice \u2013 [\"Value 1\", \"Value 2\"]\n\n\nThe provided custom properties are merged with the existing custom properties of the entity. That is, only the provided custom properties are updated and the other custom properties of the entity are left unchanged.\nIt is possible to filter entities by custom fields, as described in\n[Global filters](./entities#filter-by-custom-fields-\u2013-custom_properties)"
+      example:
+        id: 982237015
+        weekly_target_hours: 29.75
+        pattern:
+          am:
+            - 0
+            - 4.25
+            - 4.25
+            - 4.25
+            - 4.25
+          pm:
+            - 0
+            - 4.25
+            - 4.25
+            - 4.25
+            - 0
+        from: "2017-01-01"
+        to: null
+        user:
+          id: 933590696
+          firstname: John
+          lastname: Doe
+        created_at: "2018-10-17T09:33:46Z"
+        updated_at: "2018-10-17T09:33:46Z"
+security:
+  -
+    TokenAuth:
+      []
+paths:
+  /users/employments:
+    get:
+      summary: GET /users/employments
+      description: "Retrieve all employments:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/users/employments' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns an array of all employments.\n\nThe following parameters can be supplied:\n\n- [Global filters apply](../entities#global-filters)\n- **from, to** \u2013 \"2018-01-01\", \"2018-12-31\" (`from` has to be provided, `to` can be left blank for all open ended employments)\n- **user_id** \u2013 123"
+      tags:
+        - User Employments
+      security:
+        -
+          TokenAuth:
+            []
+      parameters:
+        -
+          $ref: "#/components/parameters/Ids"
+        -
+          $ref: "#/components/parameters/UpdatedAfter"
+        -
+          $ref: "#/components/parameters/CustomProperties"
+        -
+          $ref: "#/components/parameters/Page"
+        -
+          $ref: "#/components/parameters/PerPage"
+        -
+          $ref: "#/components/parameters/SortBy"
+      responses:
+        200:
+          description: "Retrieve all employments:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/users/employments' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns an array of all employments."
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserEmployments"
+              examples:
+                example:
+                  value:
+                    -
+                      id: 982237015
+                      weekly_target_hours: 29.75
+                      pattern:
+                        am:
+                          - 0
+                          - 4.25
+                          - 4.25
+                          - 4.25
+                          - 4.25
+                        pm:
+                          - 0
+                          - 4.25
+                          - 4.25
+                          - 4.25
+                          - 0
+                      from: "2017-01-01"
+                      to: null
+                      user:
+                        id: 933590696
+                        firstname: John
+                        lastname: Doe
+                      created_at: "2018-10-17T09:33:46Z"
+                      updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getUsersEmploymentsUserEmployments
+    post:
+      summary: POST /users/employments
+      description: "Create an employment:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/users/employments' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"user_id\": 123,\n        \"pattern\": {\n          \"am\": [0, 4.25, 4.25, 4.25, 4.25],\n          \"pm\": [0, 4.25, 4.25, 4.25, 0]\n        },\n        \"from\": \"2022-01-01\",\n        \"to\": \"2022-12-31\",\n      }'\n```\n\nMandatory fields are marked with a star (\\*):\n\n- **user_id\\*** \u2013 123\n- **pattern\\*** \u2013 `{ \"am\": [4, 4, 4, 4, 4], \"pm\": [4, 4, 4, 4, 4] }` the work hours during morning and afternoon on each workday\n- **from** \u2013 \"2022-01-01\" when the employment comes/came into effect (default: the current date)\n- **to** \u2013 \"2022-12-31\" when the employment stops being in effect (default: unset)"
+      tags:
+        - User Employments
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        201:
+          description: "Create an employment:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/users/employments' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"user_id\": 123,\n        \"pattern\": {\n          \"am\": [0, 4.25, 4.25, 4.25, 4.25],\n          \"pm\": [0, 4.25, 4.25, 4.25, 0]\n        },\n        \"from\": \"2022-01-01\",\n        \"to\": \"2022-12-31\",\n      }'\n```\n\nMandatory fields are marked with a star (\\*):\n\n- **user_id\\*** \u2013 123\n- **pattern\\*** \u2013 `{ \"am\": [4, 4, 4, 4, 4], \"pm\": [4, 4, 4, 4, 4] }` the work hours during morning and afternoon on each workday\n- **from** \u2013 \"2022-01-01\" when the employment comes/came into effect (default: the current date)\n- **to** \u2013 \"2022-12-31\" when the employment stops being in effect (default: unset)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEmployments"
+              examples:
+                example:
+                  value:
+                    user_id: 123
+                    pattern:
+                      am:
+                        - 0
+                        - 4.25
+                        - 4.25
+                        - 4.25
+                        - 4.25
+                      pm:
+                        - 0
+                        - 4.25
+                        - 4.25
+                        - 4.25
+                        - 0
+                    from: "2022-01-01"
+                    to: "2022-12-31"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserEmployments"
+            examples:
+              example:
+                value:
+                  user_id: 123
+                  pattern:
+                    am:
+                      - 0
+                      - 4.25
+                      - 4.25
+                      - 4.25
+                      - 4.25
+                    pm:
+                      - 0
+                      - 4.25
+                      - 4.25
+                      - 4.25
+                      - 0
+                  from: "2022-01-01"
+                  to: "2022-12-31"
+      operationId: postUsersEmploymentsUserEmployments
+  /users/employments/{id}:
+    get:
+      summary: "GET /users/employments/{id}"
+      description: "Retrieve a single employment:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/users/employments/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```"
+      tags:
+        - User Employments
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Retrieve a single employment:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/users/employments/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEmployments"
+              examples:
+                example:
+                  value:
+                    id: 982237015
+                    weekly_target_hours: 29.75
+                    pattern:
+                      am:
+                        - 0
+                        - 4.25
+                        - 4.25
+                        - 4.25
+                        - 4.25
+                      pm:
+                        - 0
+                        - 4.25
+                        - 4.25
+                        - 4.25
+                        - 0
+                    from: "2017-01-01"
+                    to: null
+                    user:
+                      id: 933590696
+                      firstname: John
+                      lastname: Doe
+                    created_at: "2018-10-17T09:33:46Z"
+                    updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getUsersEmploymentsIdUserEmployments
+    put:
+      summary: "PUT /users/employments/{id}"
+      description: "Update an employment:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/users/employments/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"pattern\": {\n          \"am\": [0, 4, 4, 4, 4],\n          \"pm\": [0, 4, 4, 4, 4]\n        }\n      }'\n```\n\nFields are analogous to the POST request but `user_id` and `pattern` are not mandatory."
+      tags:
+        - User Employments
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Update an employment:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/users/employments/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"pattern\": {\n          \"am\": [0, 4, 4, 4, 4],\n          \"pm\": [0, 4, 4, 4, 4]\n        }\n      }'\n```\n\nFields are analogous to the POST request but `user_id` and `pattern` are not mandatory."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEmployments"
+              examples:
+                example:
+                  value:
+                    pattern:
+                      am:
+                        - 0
+                        - 4
+                        - 4
+                        - 4
+                        - 4
+                      pm:
+                        - 0
+                        - 4
+                        - 4
+                        - 4
+                        - 4
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserEmployments"
+            examples:
+              example:
+                value:
+                  pattern:
+                    am:
+                      - 0
+                      - 4
+                      - 4
+                      - 4
+                      - 4
+                    pm:
+                      - 0
+                      - 4
+                      - 4
+                      - 4
+                      - 4
+      operationId: putUsersEmploymentsIdUserEmployments
+    delete:
+      summary: "DELETE /users/employments/{id}"
+      description: "Delete an employment:\n\n```bash\ncurl -X DELETE \\\n  'https://{domain}.mocoapp.com/api/v1/users/employments/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```"
+      tags:
+        - User Employments
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        204:
+          description: "Delete an employment:\n\n```bash\ncurl -X DELETE \\\n  'https://{domain}.mocoapp.com/api/v1/users/employments/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: deleteUsersEmploymentsIdUserEmployments

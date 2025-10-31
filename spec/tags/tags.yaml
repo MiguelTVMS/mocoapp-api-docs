@@ -1,0 +1,273 @@
+openapi: 3.1.0
+info:
+  title: Tags API
+  version: 1.0.0
+  description: "- TOC\n\n## General\n- Request payloads to MOCO must be sent as valid JSON with a mandatory `Content-Type: application/json`-header. Responses are also sent as JSON.\n- All requests have to be [authenticated](authentication) with a key\n- Example responses showcase the happy case, i.e. usually the `200 OK` response\n- Collections are usually [paginated](#pagination)\n- Zapier triggers are **not** triggered for API requests\n- Timestamps `created_at` and `updated_at` are sent for all entities in UTC, as ISO8601 format.\n- For synchronization almost all resources can be filtered by `updated_after` passing a time in UTC, as ISO8601 format.\n- MOCO does not support any client-libraries at the moment. However, there are currently the following unofficial clients available, which you can use at your risk: [Python Client](https://github.com/sommalia/moco-wrapper)\n\n## Entities\nAll the entities exposed via the API can be found in their [respective sections](entities.md)\n\n## Client Implementations / API Wrappers\nHere's a list of API client implementations, not maintained by us. Feel free to open up a PR to point to your implementation so others can re-use it.\n\n| Language |                Repository                                                                            |\n| :------: | :-------------------------------------------------------------------------------------------------:  |\n| Python   | [https://github.com/sommalia/moco-wrapper](https://github.com/sommalia/moco-wrapper)                 |\n| PHP      | [https://github.com/mbs-hub/moco-php](https://github.com/mbs-hub/moco-php)                           |\n| Ruby     | [https://github.com/starsong-consulting/moco-ruby](https://github.com/starsong-consulting/moco-ruby) |\n\n## Impersonation\nBy default all requests are scoped to the authenticated user. Some resources cannot be provided with a `user_id` or similar, like `Activities` and `User Presences`. This reflects the behaviour in the UI, since every user can only create their own activities or presences. But you can login as another user provided that the authenticated user has permission to _Staff_. To achieve the same behaviour in the API, one can set the following x-header:\n\n`X-IMPERSONATE-USER-ID=123` (user id to act in behalf of)\n\n## Rate Limiting\nYou can expect to be able to send 120 requests per 2 minutes (~ 1 request per second). For the unlimited plan, its 1200 requests per 2 minutes (~ 10 per second). If you exceed this limit, the server responds with `429 Too Many Requests`.\n\n## Pagination\nResponses are paginated with a common default of 100 entries per page. In the HTTP response header, the current page, the entries per page and the number of total entries is reported. There is also a link header to links to the consecutive page.\n\n- **X-Page** \u2013 3\n- **X-Per-Page** \u2013 100\n- **X-Total** \u2013 415\n- **Link** \u2013 `<https://{domain}.mocoapp.com/api/v1/projects.json?page=4>; rel=\"next\"`\n\nIf there is not Link header with `rel=\"next\"`, the current page is the last page.\n\n## Errors and HTTP status codes\nThe MOCO-API is mostly conformant with the [general HTTP status codes](https://en.wikipedia.org/wiki/List_of_HTTP_status_codes).\n\nHere are the most comment errors you will see:\n\n- **401 Unauthorized** - Check the error message in the response body\n- **403 Forbidden** - Check your [Authentication](#authentication) or your MOCO user permission\n- **404 Not Found** - Check that resource exists (maybe it was deleted in the meantime)\n- **422 Unprocessable Entity** - Check the provided error message in the response body\n- **429 Too Many Requests** - Check [Rate Limiting](#rate-limiting)\n\nSorting is controlled by the `sort_by` query parameter. Its value is the field name that should be sorted, followed by an optional sorting order (`asc` or `desc`, default is `asc`).\n\nExample:\n\n- `https://{domain}.mocoapp.com/api/v1/offers?sort_by=title desc`"
+servers:
+  -
+    url: "https://{domain}.mocoapp.com/api/v1"
+    description: Base server URL for the MOCO API.
+tags:
+  -
+    name: Tags
+    description: "- TOC"
+components:
+  securitySchemes:
+    TokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: "There's two ways to authenticate against MOCO:\n\n1. **User API key**. Can be found under the \"Integrations\" tab on the profile page.\n2. **Account API key**. Has to be created in Settings > Extensions > API & Webhooks, with either read-only or full access on all endpoints.\n\nBoth kinds of keys are provided as an Authorization header.\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/projects.json' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis key can also be requested via API for user-specific keys:\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/session \\\n  -H 'Accept: application/json' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"email\": \"max@muster.de\",\n    \"password\": \"secret\"\n  }'\n```\n\nIt's also possible to verify if the API key is still valid:\n\n```bash\ncurl https://{domain}.mocoapp.com/api/v1/session \\\n  -H 'Accept: application/json' \\\n  -H 'Content-Type: application/json'\n```\n\nIf the key is valid, the response code id `200 ok` and the body is:\n\n```json\n{\n  \"id\": 123,\n  \"uuid\": \"aec324a2-4832-11eb-b378-0242ac130002\"\n}\n```\n\notherwise the response code is `401 unauthorized`.\nThere are a few tools to try out the MOCO API. All the examples in this documentation use `curl` to demonstrate the API endpoint.\nA popular graphical UI for REST is [Postman](https://www.postman.com/). Here's an example request for the projects list including the authentication:\n\n![Postman example request](moco-api-postman.png \"Postman example request\")"
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: Pagination support as described in the general documentation.
+      schema:
+        type: integer
+        minimum: 1
+    PerPage:
+      name: per_page
+      in: query
+      description: Number of items per page for paginated responses.
+      schema:
+        type: integer
+        minimum: 1
+    SortBy:
+      name: sort_by
+      in: query
+      description: Sorting is controlled by the `sort_by` query parameter. Provide the field name and optional order (asc or desc).
+      schema:
+        type: string
+    Ids:
+      name: ids
+      in: query
+      description: "Usage: `GET /api/v1/entities?ids=123,456`\n\nAllows you to filter by comma-separated IDs and fetch multiple entities."
+      schema:
+        type: string
+    UpdatedAfter:
+      name: updated_after
+      in: query
+      description: "Usage: `GET /api/v1/entities?updated_after=2022-04-20T09:17:58Z` (ISO8601 timestamp)\n\nEnables you to give a timestamp for all entities that are created or updated after this timestamp, especially useful for synchronisation purposes.\n\nCombine it with a [webhook subscription](webhooks) on DELETE for the entity to have a complete synchronisation."
+      schema:
+        type: string
+        format: "date-time"
+    CustomProperties:
+      name: custom_properties
+      in: query
+      description: "Allows you to filter entities by one or more custom fields. The filter for the custom fields is passed via the query-parameter `custom_properties`. To query entities that contain the value \"Automotive\" in a custom field named \"Sector\", the query would need to be as follows:\n\n`GET /api/v1/entities?custom_properties[Sector]=Automotive`\n\nFiltering by an unknown custom field will result in an empty result set!"
+      schema:
+        type: object
+        additionalProperties: true
+      style: deepObject
+      explode: true
+  schemas:
+    ErrorResponse:
+      type: object
+      description: Generic error response body.
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      additionalProperties: true
+    Tags:
+      type: object
+      description: "```json\n{\n  \"id\": 12345678,\n  \"name\": \"Important\",\n  \"color\": \"#FF0000\",\n  \"context\": \"Project\",\n  \"created_at\": \"2018-10-17T09:33:46Z\",\n  \"updated_at\": \"2018-10-17T09:33:46Z\"\n}\n```\n\nCustom fields reference:\nMOCO supports saving custom fields to many of its resources. These custom fields are readable and writable via the `custom_properties` field.\n\n Custom fields must first be defined in the MOCO settings.\n\n The size of the custom_properties field is limitted to 12 kB.\n\n```json\n\"custom_properties\": {\n    \"UID\": \"123-UID-456\",\n    \"Line of business\": \"Automotive\"\n}\n```\n\nParameters are sent with their name as key:\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/customers \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"name\": \"Beispiel AG\",\n    \"currency\": \"CHF\",\n    \"custom_properties\": {\n      \"Line of business\": \"Automotive\"\n    }\n  }'\n```\n\nAll values are encoded as strings, expect for Multiple Choice, which is encoded as an array.\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/customers \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"custom_properties\": {\n          \"Line of business\": [\"Automotive\", \"Banking\"]\n        }\n      }'\n```\n\n- Single-line input \u2013 \"Automotive\"\n- Mehrzeilige Eingabe \u2013 \"A multiline input...\"\n- Link \u2013 \"https://www...\"\n- Date \u2013 \"2021-12-31\"\n- Yes/No \u2013 \"0\", \"1\" (0 = No, 1 = Yes)\n- Single choice \u2013 \"Value\"\n- Multiple choice \u2013 [\"Value 1\", \"Value 2\"]\n\n\nThe provided custom properties are merged with the existing custom properties of the entity. That is, only the provided custom properties are updated and the other custom properties of the entity are left unchanged.\nIt is possible to filter entities by custom fields, as described in\n[Global filters](./entities#filter-by-custom-fields-\u2013-custom_properties)"
+      example:
+        id: 12345678
+        name: Important
+        color: "#FF0000"
+        context: Project
+        created_at: "2018-10-17T09:33:46Z"
+        updated_at: "2018-10-17T09:33:46Z"
+security:
+  -
+    TokenAuth:
+      []
+paths:
+  /tags:
+    get:
+      summary: GET /tags
+      description: "Retrieve the list of tags:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/tags'\n```\n\nThis returns an array of all tags.\n\nThe following parameters can be supplied:\n\n- [Global filters apply](../entities#global-filters)\n- **context** \u2013 one of Company, Contact, Project, Deal, Purchase, Invoice, Offer or User"
+      tags:
+        - Tags
+      security:
+        -
+          TokenAuth:
+            []
+      parameters:
+        -
+          $ref: "#/components/parameters/Ids"
+        -
+          $ref: "#/components/parameters/UpdatedAfter"
+        -
+          $ref: "#/components/parameters/CustomProperties"
+        -
+          $ref: "#/components/parameters/Page"
+        -
+          $ref: "#/components/parameters/PerPage"
+        -
+          $ref: "#/components/parameters/SortBy"
+      responses:
+        200:
+          description: "Retrieve the list of tags:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/tags'\n```\n\nThis returns an array of all tags."
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tags"
+              examples:
+                example:
+                  value:
+                    -
+                      id: 12345678
+                      name: Important
+                      color: "#FF0000"
+                      context: Project
+                      created_at: "2018-10-17T09:33:46Z"
+                      updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getTagsTags
+    post:
+      summary: POST /tags
+      description: "Create a tag:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/tags' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"name\": \"ONHOLD\",\n        \"color\": \"#FFFF00\",\n        \"context\": \"Project\"\n      }'\n```\n\nThis creates a yellow tag \"ONHOLD\" for the projects area.\n\nMandatory fields are marked with a star (\\*):\n\n- **name\\*** \u2013 \"ONHOLD\"\n- **context\\*** \u2013 one of Company, Contact, Project, Deal, Purchase, Invoice, Offer or User\n- **color** \u2013 must be in hex format `#ABC123`; default is grey"
+      tags:
+        - Tags
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        201:
+          description: "Create a tag:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/tags' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"name\": \"ONHOLD\",\n        \"color\": \"#FFFF00\",\n        \"context\": \"Project\"\n      }'\n```\n\nThis creates a yellow tag \"ONHOLD\" for the projects area."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tags"
+              examples:
+                example:
+                  value:
+                    id: 12345678
+                    name: Important
+                    color: "#FF0000"
+                    context: Project
+                    created_at: "2018-10-17T09:33:46Z"
+                    updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Tags"
+            examples:
+              example:
+                value:
+                  id: 12345678
+                  name: Important
+                  color: "#FF0000"
+                  context: Project
+                  created_at: "2018-10-17T09:33:46Z"
+                  updated_at: "2018-10-17T09:33:46Z"
+      operationId: postTagsTags
+  /tags/{id}:
+    get:
+      summary: "GET /tags/{id}"
+      description: "Retrieve a single tag:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/tags/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```"
+      tags:
+        - Tags
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Retrieve a single tag:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/tags/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tags"
+              examples:
+                example:
+                  value:
+                    id: 12345678
+                    name: Important
+                    color: "#FF0000"
+                    context: Project
+                    created_at: "2018-10-17T09:33:46Z"
+                    updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getTagsIdTags
+    put:
+      summary: "PUT /tags/{id}"
+      description: "Change a tag:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/tags/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"color\": \"#FF0000\"\n      }'\n```\n\nOnly `name` and `color` can be changed (not the context or area in MOCO)."
+      tags:
+        - Tags
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Change a tag:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/tags/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"color\": \"#FF0000\"\n      }'\n```\n\nOnly `name` and `color` can be changed (not the context or area in MOCO)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tags"
+              examples:
+                example:
+                  value:
+                    color: "#FF0000"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Tags"
+            examples:
+              example:
+                value:
+                  color: "#FF0000"
+      operationId: putTagsIdTags
+    delete:
+      summary: "DELETE /tags/{id}"
+      description: "Selectively remove the tags associated to the entity:\n\n```bash\ncurl -X DELETE \\\n  'https://{domain}.mocoapp.com/api/v1/tags/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nPass `merge_tag_id` if you want to replace all tagged entities with another tag. Useful to consolidate many tags into one."
+      tags:
+        - Tags
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        204:
+          description: "Selectively remove the tags associated to the entity:\n\n```bash\ncurl -X DELETE \\\n  'https://{domain}.mocoapp.com/api/v1/tags/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nPass `merge_tag_id` if you want to replace all tagged entities with another tag."
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: deleteTagsIdTags

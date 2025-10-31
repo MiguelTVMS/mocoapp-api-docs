@@ -1,0 +1,450 @@
+openapi: 3.1.0
+info:
+  title: Users API
+  version: 1.0.0
+  description: "German: \"Personal\"\n\n- TOC\n\n## General\n- Request payloads to MOCO must be sent as valid JSON with a mandatory `Content-Type: application/json`-header. Responses are also sent as JSON.\n- All requests have to be [authenticated](authentication) with a key\n- Example responses showcase the happy case, i.e. usually the `200 OK` response\n- Collections are usually [paginated](#pagination)\n- Zapier triggers are **not** triggered for API requests\n- Timestamps `created_at` and `updated_at` are sent for all entities in UTC, as ISO8601 format.\n- For synchronization almost all resources can be filtered by `updated_after` passing a time in UTC, as ISO8601 format.\n- MOCO does not support any client-libraries at the moment. However, there are currently the following unofficial clients available, which you can use at your risk: [Python Client](https://github.com/sommalia/moco-wrapper)\n\n## Entities\nAll the entities exposed via the API can be found in their [respective sections](entities.md)\n\n## Client Implementations / API Wrappers\nHere's a list of API client implementations, not maintained by us. Feel free to open up a PR to point to your implementation so others can re-use it.\n\n| Language |                Repository                                                                            |\n| :------: | :-------------------------------------------------------------------------------------------------:  |\n| Python   | [https://github.com/sommalia/moco-wrapper](https://github.com/sommalia/moco-wrapper)                 |\n| PHP      | [https://github.com/mbs-hub/moco-php](https://github.com/mbs-hub/moco-php)                           |\n| Ruby     | [https://github.com/starsong-consulting/moco-ruby](https://github.com/starsong-consulting/moco-ruby) |\n\n## Impersonation\nBy default all requests are scoped to the authenticated user. Some resources cannot be provided with a `user_id` or similar, like `Activities` and `User Presences`. This reflects the behaviour in the UI, since every user can only create their own activities or presences. But you can login as another user provided that the authenticated user has permission to _Staff_. To achieve the same behaviour in the API, one can set the following x-header:\n\n`X-IMPERSONATE-USER-ID=123` (user id to act in behalf of)\n\n## Rate Limiting\nYou can expect to be able to send 120 requests per 2 minutes (~ 1 request per second). For the unlimited plan, its 1200 requests per 2 minutes (~ 10 per second). If you exceed this limit, the server responds with `429 Too Many Requests`.\n\n## Pagination\nResponses are paginated with a common default of 100 entries per page. In the HTTP response header, the current page, the entries per page and the number of total entries is reported. There is also a link header to links to the consecutive page.\n\n- **X-Page** \u2013 3\n- **X-Per-Page** \u2013 100\n- **X-Total** \u2013 415\n- **Link** \u2013 `<https://{domain}.mocoapp.com/api/v1/projects.json?page=4>; rel=\"next\"`\n\nIf there is not Link header with `rel=\"next\"`, the current page is the last page.\n\n## Errors and HTTP status codes\nThe MOCO-API is mostly conformant with the [general HTTP status codes](https://en.wikipedia.org/wiki/List_of_HTTP_status_codes).\n\nHere are the most comment errors you will see:\n\n- **401 Unauthorized** - Check the error message in the response body\n- **403 Forbidden** - Check your [Authentication](#authentication) or your MOCO user permission\n- **404 Not Found** - Check that resource exists (maybe it was deleted in the meantime)\n- **422 Unprocessable Entity** - Check the provided error message in the response body\n- **429 Too Many Requests** - Check [Rate Limiting](#rate-limiting)\n\nSorting is controlled by the `sort_by` query parameter. Its value is the field name that should be sorted, followed by an optional sorting order (`asc` or `desc`, default is `asc`).\n\nExample:\n\n- `https://{domain}.mocoapp.com/api/v1/offers?sort_by=title desc`"
+servers:
+  -
+    url: "https://{domain}.mocoapp.com/api/v1"
+    description: Base server URL for the MOCO API.
+tags:
+  -
+    name: Users
+    description: "German: \"Personal\"\n\n- TOC"
+components:
+  securitySchemes:
+    TokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: "There's two ways to authenticate against MOCO:\n\n1. **User API key**. Can be found under the \"Integrations\" tab on the profile page.\n2. **Account API key**. Has to be created in Settings > Extensions > API & Webhooks, with either read-only or full access on all endpoints.\n\nBoth kinds of keys are provided as an Authorization header.\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/projects.json' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis key can also be requested via API for user-specific keys:\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/session \\\n  -H 'Accept: application/json' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"email\": \"max@muster.de\",\n    \"password\": \"secret\"\n  }'\n```\n\nIt's also possible to verify if the API key is still valid:\n\n```bash\ncurl https://{domain}.mocoapp.com/api/v1/session \\\n  -H 'Accept: application/json' \\\n  -H 'Content-Type: application/json'\n```\n\nIf the key is valid, the response code id `200 ok` and the body is:\n\n```json\n{\n  \"id\": 123,\n  \"uuid\": \"aec324a2-4832-11eb-b378-0242ac130002\"\n}\n```\n\notherwise the response code is `401 unauthorized`.\nThere are a few tools to try out the MOCO API. All the examples in this documentation use `curl` to demonstrate the API endpoint.\nA popular graphical UI for REST is [Postman](https://www.postman.com/). Here's an example request for the projects list including the authentication:\n\n![Postman example request](moco-api-postman.png \"Postman example request\")"
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: Pagination support as described in the general documentation.
+      schema:
+        type: integer
+        minimum: 1
+    PerPage:
+      name: per_page
+      in: query
+      description: Number of items per page for paginated responses.
+      schema:
+        type: integer
+        minimum: 1
+    SortBy:
+      name: sort_by
+      in: query
+      description: Sorting is controlled by the `sort_by` query parameter. Provide the field name and optional order (asc or desc).
+      schema:
+        type: string
+    Ids:
+      name: ids
+      in: query
+      description: "Usage: `GET /api/v1/entities?ids=123,456`\n\nAllows you to filter by comma-separated IDs and fetch multiple entities."
+      schema:
+        type: string
+    UpdatedAfter:
+      name: updated_after
+      in: query
+      description: "Usage: `GET /api/v1/entities?updated_after=2022-04-20T09:17:58Z` (ISO8601 timestamp)\n\nEnables you to give a timestamp for all entities that are created or updated after this timestamp, especially useful for synchronisation purposes.\n\nCombine it with a [webhook subscription](webhooks) on DELETE for the entity to have a complete synchronisation."
+      schema:
+        type: string
+        format: "date-time"
+    CustomProperties:
+      name: custom_properties
+      in: query
+      description: "Allows you to filter entities by one or more custom fields. The filter for the custom fields is passed via the query-parameter `custom_properties`. To query entities that contain the value \"Automotive\" in a custom field named \"Sector\", the query would need to be as follows:\n\n`GET /api/v1/entities?custom_properties[Sector]=Automotive`\n\nFiltering by an unknown custom field will result in an empty result set!"
+      schema:
+        type: object
+        additionalProperties: true
+      style: deepObject
+      explode: true
+  schemas:
+    ErrorResponse:
+      type: object
+      description: Generic error response body.
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      additionalProperties: true
+    Users:
+      type: object
+      description: "```json\n{\n  \"id\": 123,\n  \"firstname\": \"Max\",\n  \"lastname\": \"Muster\",\n  \"active\": true,\n  \"extern\": false,\n  \"email\": \"max.muster@beispiel.de\",\n  \"mobile_phone\": \"+49 177 123 45 67\",\n  \"work_phone\": \"+49 40 123 45 67\",\n  \"home_address\": \"\",\n  \"info\": \"\",\n  \"birthday\": \"1970-01-01\",\n  \"iban\": \"CH3181239000001245689\",\n  \"avatar_url\": \"https//meinefirma.mocoapp.com/.../profil.jpg\",\n  \"tags\": [\n    \"Deutschland\"\n  ],\n  \"custom_properties\": {\n    \"Starting Month\": \"January 2015\"\n  },\n  \"unit\": {\n    \"id\": 456,\n    \"name\": \"Gesch\u00e4ftsleitung\"\n  },\n  \"role\": {\n    \"id\": 42,\n    \"name\": \"Entwickler\"\n  },\n  \"created_at\": \"2018-10-17T09:33:46Z\",\n  \"updated_at\": \"2018-10-17T09:33:46Z\"\n}\n```\n\nCustom fields reference:\nMOCO supports saving custom fields to many of its resources. These custom fields are readable and writable via the `custom_properties` field.\n\n Custom fields must first be defined in the MOCO settings.\n\n The size of the custom_properties field is limitted to 12 kB.\n\n```json\n\"custom_properties\": {\n    \"UID\": \"123-UID-456\",\n    \"Line of business\": \"Automotive\"\n}\n```\n\nParameters are sent with their name as key:\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/customers \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"name\": \"Beispiel AG\",\n    \"currency\": \"CHF\",\n    \"custom_properties\": {\n      \"Line of business\": \"Automotive\"\n    }\n  }'\n```\n\nAll values are encoded as strings, expect for Multiple Choice, which is encoded as an array.\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/customers \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"custom_properties\": {\n          \"Line of business\": [\"Automotive\", \"Banking\"]\n        }\n      }'\n```\n\n- Single-line input \u2013 \"Automotive\"\n- Mehrzeilige Eingabe \u2013 \"A multiline input...\"\n- Link \u2013 \"https://www...\"\n- Date \u2013 \"2021-12-31\"\n- Yes/No \u2013 \"0\", \"1\" (0 = No, 1 = Yes)\n- Single choice \u2013 \"Value\"\n- Multiple choice \u2013 [\"Value 1\", \"Value 2\"]\n\n\nThe provided custom properties are merged with the existing custom properties of the entity. That is, only the provided custom properties are updated and the other custom properties of the entity are left unchanged.\nIt is possible to filter entities by custom fields, as described in\n[Global filters](./entities#filter-by-custom-fields-\u2013-custom_properties)"
+      example:
+        id: 123
+        firstname: Max
+        lastname: Muster
+        active: true
+        extern: false
+        email: max.muster@beispiel.de
+        mobile_phone: +49 177 123 45 67
+        work_phone: +49 40 123 45 67
+        home_address: ""
+        info: ""
+        birthday: "1970-01-01"
+        iban: CH3181239000001245689
+        avatar_url: https//meinefirma.mocoapp.com/.../profil.jpg
+        tags:
+          - Deutschland
+        custom_properties:
+          Starting Month: January 2015
+        unit:
+          id: 456
+          name: Geschäftsleitung
+        role:
+          id: 42
+          name: Entwickler
+        created_at: "2018-10-17T09:33:46Z"
+        updated_at: "2018-10-17T09:33:46Z"
+security:
+  -
+    TokenAuth:
+      []
+paths:
+  /users:
+    get:
+      summary: GET /users
+      description: "Retrieve all staff:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/users' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns an array with complete staff information (see Attributes).\n\nThe following parameters can be supplied:\n\n- [Global filters apply](../entities#global-filters)\n- **include_archived** \u2013 true/false (deactivated users)\n- **tags** \"Designer, Developer\" (comma separated list)"
+      tags:
+        - Users
+      security:
+        -
+          TokenAuth:
+            []
+      parameters:
+        -
+          $ref: "#/components/parameters/Ids"
+        -
+          $ref: "#/components/parameters/UpdatedAfter"
+        -
+          $ref: "#/components/parameters/CustomProperties"
+        -
+          $ref: "#/components/parameters/Page"
+        -
+          $ref: "#/components/parameters/PerPage"
+        -
+          $ref: "#/components/parameters/SortBy"
+      responses:
+        200:
+          description: "Retrieve all staff:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/users' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns an array with complete staff information (see Attributes)."
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Users"
+              examples:
+                example:
+                  value:
+                    -
+                      id: 123
+                      firstname: Max
+                      lastname: Muster
+                      active: true
+                      extern: false
+                      email: max.muster@beispiel.de
+                      mobile_phone: +49 177 123 45 67
+                      work_phone: +49 40 123 45 67
+                      home_address: ""
+                      info: ""
+                      birthday: "1970-01-01"
+                      iban: CH3181239000001245689
+                      avatar_url: https//meinefirma.mocoapp.com/.../profil.jpg
+                      tags:
+                        - Deutschland
+                      custom_properties:
+                        Starting Month: January 2015
+                      unit:
+                        id: 456
+                        name: Geschäftsleitung
+                      role:
+                        id: 42
+                        name: Entwickler
+                      created_at: "2018-10-17T09:33:46Z"
+                      updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getUsersUsers
+    post:
+      summary: POST /users
+      description: "Create a staff member:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/users' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"firstname\": \"Carmen\",\n        \"lastname\": \"Sandiego\",\n        \"email\": \"carmen.sandiego@acme.corp\",\n        \"password\": \"dAfsdf88fw8fKjtD28f293!\",\n        \"unit_id\": 123\n      }'\n```\n\nMandatory fields are marked with a star (\\*):\n\n- **firstname\\*** \u2013 \"Peter\"\n- **lastname\\*** \u2013 \"M\u00fcller\"\n- **email\\*** \u2013 \"peter.mueller@meinefirma.de\"\n- **password\\*** \u2013 \"dAfsdf88fw8fKjtD28f293!\"\n- **unit_id\\*** \u2013 123 (team ID)\n- **role_id** \u2013 42 (permission role ID)\n- **active** \u2013 true/false (activated/deactivated)\n- **external** \u2013 true/false (external employee / contractor)\n- **language** \u2013 \"de\", \"de-AT\", \"de-CH\", \"en\", \"it\" or \"fr\"\n- **mobile_phone** \u2013 \"+41 79 123 45 67\"\n- **work_phone** \u2013 \"+41 44 123 45 67\"\n- **home_address** \u2013 \"Peter M\u00fcller\\nBeispielstrasse 123\\nBeispielstadt\"\n- **bday** \u2013 \"1975-01-17\"\n- **iban** - \"CH3181239000001245689\"\n- **work_phone** \u2013 \"+41 44 123 45 67\"\n- **tags** \u2013 [\"Switzerland\"]\n- **custom_properties** \u2013 {\"Starting Month\": \"01.01.2016\"}\n- **info** \u2013 \"Info for this person...\"\n- **welcome_email** \u2013 true/false (if the user should get the welcome email)\n- **avatar** \u2013 avatar (user picture) with the following fields:\n  - filename \u2013 \"document.pdf\"\n  - base64 \u2013 base64 encoded content of the file"
+      tags:
+        - Users
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        201:
+          description: "Create a staff member:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/users' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"firstname\": \"Carmen\",\n        \"lastname\": \"Sandiego\",\n        \"email\": \"carmen.sandiego@acme.corp\",\n        \"password\": \"dAfsdf88fw8fKjtD28f293!\",\n        \"unit_id\": 123\n      }'\n```\n\nMandatory fields are marked with a star (\\*):\n\n- **firstname\\*** \u2013 \"Peter\"\n- **lastname\\*** \u2013 \"M\u00fcller\"\n- **email\\*** \u2013 \"peter.mueller@meinefirma.de\"\n- **password\\*** \u2013 \"dAfsdf88fw8fKjtD28f293!\"\n- **unit_id\\*** \u2013 123 (team ID)\n- **role_id** \u2013 42 (permission role ID)\n- **active** \u2013 true/false (activated/deactivated)\n- **external** \u2013 true/false (external employee / contractor)\n- **language** \u2013 \"de\", \"de-AT\", \"de-CH\", \"en\", \"it\" or \"fr\"\n- **mobile_phone** \u2013 \"+41 79 123 45 67\"\n- **work_phone** \u2013 \"+41 44 123 45 67\"\n- **home_address** \u2013 \"Peter M\u00fcller\\nBeispielstrasse 123\\nBeispielstadt\"\n- **bday** \u2013 \"1975-01-17\"\n- **iban** - \"CH3181239000001245689\"\n- **work_phone** \u2013 \"+41 44 123 45 67\"\n- **tags** \u2013 [\"Switzerland\"]\n- **custom_properties** \u2013 {\"Starting Month\": \"01.01.2016\"}\n- **info** \u2013 \"Info for this person...\"\n- **welcome_email** \u2013 true/false (if the user should get the welcome email)\n- **avatar** \u2013 avatar (user picture) with the following fields:\n  - filename \u2013 \"document.pdf\"\n  - base64 \u2013 base64 encoded content of the file"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Users"
+              examples:
+                example:
+                  value:
+                    firstname: Carmen
+                    lastname: Sandiego
+                    email: carmen.sandiego@acme.corp
+                    password: dAfsdf88fw8fKjtD28f293!
+                    unit_id: 123
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Users"
+            examples:
+              example:
+                value:
+                  firstname: Carmen
+                  lastname: Sandiego
+                  email: carmen.sandiego@acme.corp
+                  password: dAfsdf88fw8fKjtD28f293!
+                  unit_id: 123
+      operationId: postUsersUsers
+  /users/{id}:
+    get:
+      summary: "GET /users/{id}"
+      description: "Retrieve a single staff member:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/users/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns a single staff member representation."
+      tags:
+        - Users
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Retrieve a single staff member:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/users/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns a single staff member representation."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Users"
+              examples:
+                example:
+                  value:
+                    id: 123
+                    firstname: Max
+                    lastname: Muster
+                    active: true
+                    extern: false
+                    email: max.muster@beispiel.de
+                    mobile_phone: +49 177 123 45 67
+                    work_phone: +49 40 123 45 67
+                    home_address: ""
+                    info: ""
+                    birthday: "1970-01-01"
+                    iban: CH3181239000001245689
+                    avatar_url: https//meinefirma.mocoapp.com/.../profil.jpg
+                    tags:
+                      - Deutschland
+                    custom_properties:
+                      Starting Month: January 2015
+                    unit:
+                      id: 456
+                      name: Geschäftsleitung
+                    role:
+                      id: 42
+                      name: Entwickler
+                    created_at: "2018-10-17T09:33:46Z"
+                    updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getUsersIdUsers
+    put:
+      summary: "PUT /users/{id}"
+      description: "Update a staff member:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/users/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"lastname\": \"Casanova\",\n        \"email\": \"carmen.casanova@acme.corp\",\n      }'\n```\n\nFields are analogous to the POST request. A related [employment](employments.md) must be termined separately."
+      tags:
+        - Users
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Update a staff member:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/users/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"lastname\": \"Casanova\",\n        \"email\": \"carmen.casanova@acme.corp\",\n      }'\n```\n\nFields are analogous to the POST request."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Users"
+              examples:
+                example:
+                  value:
+                    lastname: Casanova
+                    email: carmen.casanova@acme.corp
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Users"
+            examples:
+              example:
+                value:
+                  lastname: Casanova
+                  email: carmen.casanova@acme.corp
+      operationId: putUsersIdUsers
+    delete:
+      summary: "DELETE /users/{id}"
+      description: "Deleting a staff member is only possible if no hours are billed already.\n\n```bash\ncurl -X DELETE \\\n  'https://{domain}.mocoapp.com/api/v1/users/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```"
+      tags:
+        - Users
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        204:
+          description: Deleting a staff member is only possible if no hours are billed already.
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: deleteUsersIdUsers
+  /users/{id}/performance_report:
+    get:
+      summary: "GET /users/{id}/performance_report"
+      description: "Retrieve a report on tracked hours vs target hours:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/users/{id}/performance_report' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns a performance report for this user:\n\n```json\n{\n  \"annually\": {\n    \"year\": 2021,\n    \"employment_hours\": 1670.4,\n    \"target_hours\": 1606.4,\n    \"hours_tracked_total\": 210.95,\n    \"variation\": -1395.45,\n    \"variation_until_today\": -0.25,\n    \"hours_billable_total\": 190.95\n  },\n  \"monthly\": [\n    {\n      \"year\": 2021,\n      \"month\": 1,\n      \"target_hours\": 128.0,\n      \"hours_tracked_total\": 133.71,\n      \"variation\": 5.71,\n      \"hours_billable_total\": 113.95\n    },\n    {\n      \"year\": 2021,\n      \"month\": 2,\n      \"target_hours\": 128.0,\n      \"hours_tracked_total\": 77.24,\n      \"variation\": -50.76,\n      \"hours_billable_total\": 67.95\n    },\n    {\n      \"year\": 2021,\n      \"month\": 3,\n      \"target_hours\": 115.2,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -115.2,\n      \"hours_billable_total\": 0.0\n    },\n    {\n      \"year\": 2021,\n      \"month\": 4,\n      \"target_hours\": 128.0,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -128.0,\n      \"hours_billable_total\": 0.0\n    },\n    {\n      \"year\": 2021,\n      \"month\": 5,\n      \"target_hours\": 121.6,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -121.6,\n      \"hours_billable_total\": 0.0\n    },\n    {\n      \"year\": 2021,\n      \"month\": 6,\n      \"target_hours\": 140.8,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -140.8,\n      \"hours_billable_total\": 0.0\n    },\n    {\n      \"year\": 2021,\n      \"month\": 7,\n      \"target_hours\": 140.8,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -140.8,\n      \"hours_billable_total\": 0.0,\n    },\n    {\n      \"year\": 2021,\n      \"month\": 8,\n      \"target_hours\": 140.8,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -140.8,\n      \"hours_billable_total\": 0.0\n    },\n    {\n      \"year\": 2021,\n      \"month\": 9,\n      \"target_hours\": 140.8,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -140.8,\n      \"hours_billable_total\": 0.0\n    },\n    {\n      \"year\": 2021,\n      \"month\": 10,\n      \"target_hours\": 134.4,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -134.4,\n      \"hours_billable_total\": 0.0\n    },\n    {\n      \"year\": 2021,\n      \"month\": 11,\n      \"target_hours\": 140.8,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -140.8,\n      \"hours_billable_total\": 0.0\n    },\n    {\n      \"year\": 2021,\n      \"month\": 12,\n      \"target_hours\": 147.2,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -147.2,\n      \"hours_billable_total\": 0.0\n    }\n  ]\n}\n```\n\nThe following parameters can be supplied:\n\n- **year** \u2013 e.g. 2021 (empty = current year)"
+      tags:
+        - Users
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Retrieve a report on tracked hours vs target hours:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/users/{id}/performance_report' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns a performance report for this user:\n\n```json\n{\n  \"annually\": {\n    \"year\": 2021,\n    \"employment_hours\": 1670.4,\n    \"target_hours\": 1606.4,\n    \"hours_tracked_total\": 210.95,\n    \"variation\": -1395.45,\n    \"variation_until_today\": -0.25,\n    \"hours_billable_total\": 190.95\n  },\n  \"monthly\": [\n    {\n      \"year\": 2021,\n      \"month\": 1,\n      \"target_hours\": 128.0,\n      \"hours_tracked_total\": 133.71,\n      \"variation\": 5.71,\n      \"hours_billable_total\": 113.95\n    },\n    {\n      \"year\": 2021,\n      \"month\": 2,\n      \"target_hours\": 128.0,\n      \"hours_tracked_total\": 77.24,\n      \"variation\": -50.76,\n      \"hours_billable_total\": 67.95\n    },\n    {\n      \"year\": 2021,\n      \"month\": 3,\n      \"target_hours\": 115.2,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -115.2,\n      \"hours_billable_total\": 0.0\n    },\n    {\n      \"year\": 2021,\n      \"month\": 4,\n      \"target_hours\": 128.0,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -128.0,\n      \"hours_billable_total\": 0.0\n    },\n    {\n      \"year\": 2021,\n      \"month\": 5,\n      \"target_hours\": 121.6,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -121.6,\n      \"hours_billable_total\": 0.0\n    },\n    {\n      \"year\": 2021,\n      \"month\": 6,\n      \"target_hours\": 140.8,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -140.8,\n      \"hours_billable_total\": 0.0\n    },\n    {\n      \"year\": 2021,\n      \"month\": 7,\n      \"target_hours\": 140.8,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -140.8,\n      \"hours_billable_total\": 0.0,\n    },\n    {\n      \"year\": 2021,\n      \"month\": 8,\n      \"target_hours\": 140.8,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -140.8,\n      \"hours_billable_total\": 0.0\n    },\n    {\n      \"year\": 2021,\n      \"month\": 9,\n      \"target_hours\": 140.8,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -140.8,\n      \"hours_billable_total\": 0.0\n    },\n    {\n      \"year\": 2021,\n      \"month\": 10,\n      \"target_hours\": 134.4,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -134.4,\n      \"hours_billable_total\": 0.0\n    },\n    {\n      \"year\": 2021,\n      \"month\": 11,\n      \"target_hours\": 140.8,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -140.8,\n      \"hours_billable_total\": 0.0\n    },\n    {\n      \"year\": 2021,\n      \"month\": 12,\n      \"target_hours\": 147.2,\n      \"hours_tracked_total\": 0.0,\n      \"variation\": -147.2,\n      \"hours_billable_total\": 0.0\n    }\n  ]\n}\n```\n\nThe following parameters can be supplied:\n\n- **year** \u2013 e.g."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Users"
+              examples:
+                example:
+                  value:
+                    annually:
+                      year: 2021
+                      employment_hours: 1670.4
+                      target_hours: 1606.4
+                      hours_tracked_total: 210.95
+                      variation: -1395.45
+                      variation_until_today: -0.25
+                      hours_billable_total: 190.95
+                    monthly:
+                      -
+                        year: 2021
+                        month: 1
+                        target_hours: 128.0
+                        hours_tracked_total: 133.71
+                        variation: 5.71
+                        hours_billable_total: 113.95
+                      -
+                        year: 2021
+                        month: 2
+                        target_hours: 128.0
+                        hours_tracked_total: 77.24
+                        variation: -50.76
+                        hours_billable_total: 67.95
+                      -
+                        year: 2021
+                        month: 3
+                        target_hours: 115.2
+                        hours_tracked_total: 0.0
+                        variation: -115.2
+                        hours_billable_total: 0.0
+                      -
+                        year: 2021
+                        month: 4
+                        target_hours: 128.0
+                        hours_tracked_total: 0.0
+                        variation: -128.0
+                        hours_billable_total: 0.0
+                      -
+                        year: 2021
+                        month: 5
+                        target_hours: 121.6
+                        hours_tracked_total: 0.0
+                        variation: -121.6
+                        hours_billable_total: 0.0
+                      -
+                        year: 2021
+                        month: 6
+                        target_hours: 140.8
+                        hours_tracked_total: 0.0
+                        variation: -140.8
+                        hours_billable_total: 0.0
+                      -
+                        year: 2021
+                        month: 7
+                        target_hours: 140.8
+                        hours_tracked_total: 0.0
+                        variation: -140.8
+                        hours_billable_total: 0.0
+                      -
+                        year: 2021
+                        month: 8
+                        target_hours: 140.8
+                        hours_tracked_total: 0.0
+                        variation: -140.8
+                        hours_billable_total: 0.0
+                      -
+                        year: 2021
+                        month: 9
+                        target_hours: 140.8
+                        hours_tracked_total: 0.0
+                        variation: -140.8
+                        hours_billable_total: 0.0
+                      -
+                        year: 2021
+                        month: 10
+                        target_hours: 134.4
+                        hours_tracked_total: 0.0
+                        variation: -134.4
+                        hours_billable_total: 0.0
+                      -
+                        year: 2021
+                        month: 11
+                        target_hours: 140.8
+                        hours_tracked_total: 0.0
+                        variation: -140.8
+                        hours_billable_total: 0.0
+                      -
+                        year: 2021
+                        month: 12
+                        target_hours: 147.2
+                        hours_tracked_total: 0.0
+                        variation: -147.2
+                        hours_billable_total: 0.0
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getUsersIdPerformance_ReportUsers

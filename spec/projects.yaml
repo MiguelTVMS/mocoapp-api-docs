@@ -1,0 +1,1428 @@
+openapi: 3.1.0
+info:
+  title: Projects API
+  version: 1.0.0
+  description: "German: \"Projekte\"\n\n- TOC\n\n## General\n- Request payloads to MOCO must be sent as valid JSON with a mandatory `Content-Type: application/json`-header. Responses are also sent as JSON.\n- All requests have to be [authenticated](authentication) with a key\n- Example responses showcase the happy case, i.e. usually the `200 OK` response\n- Collections are usually [paginated](#pagination)\n- Zapier triggers are **not** triggered for API requests\n- Timestamps `created_at` and `updated_at` are sent for all entities in UTC, as ISO8601 format.\n- For synchronization almost all resources can be filtered by `updated_after` passing a time in UTC, as ISO8601 format.\n- MOCO does not support any client-libraries at the moment. However, there are currently the following unofficial clients available, which you can use at your risk: [Python Client](https://github.com/sommalia/moco-wrapper)\n\n## Entities\nAll the entities exposed via the API can be found in their [respective sections](entities.md)\n\n## Client Implementations / API Wrappers\nHere's a list of API client implementations, not maintained by us. Feel free to open up a PR to point to your implementation so others can re-use it.\n\n| Language |                Repository                                                                            |\n| :------: | :-------------------------------------------------------------------------------------------------:  |\n| Python   | [https://github.com/sommalia/moco-wrapper](https://github.com/sommalia/moco-wrapper)                 |\n| PHP      | [https://github.com/mbs-hub/moco-php](https://github.com/mbs-hub/moco-php)                           |\n| Ruby     | [https://github.com/starsong-consulting/moco-ruby](https://github.com/starsong-consulting/moco-ruby) |\n\n## Impersonation\nBy default all requests are scoped to the authenticated user. Some resources cannot be provided with a `user_id` or similar, like `Activities` and `User Presences`. This reflects the behaviour in the UI, since every user can only create their own activities or presences. But you can login as another user provided that the authenticated user has permission to _Staff_. To achieve the same behaviour in the API, one can set the following x-header:\n\n`X-IMPERSONATE-USER-ID=123` (user id to act in behalf of)\n\n## Rate Limiting\nYou can expect to be able to send 120 requests per 2 minutes (~ 1 request per second). For the unlimited plan, its 1200 requests per 2 minutes (~ 10 per second). If you exceed this limit, the server responds with `429 Too Many Requests`.\n\n## Pagination\nResponses are paginated with a common default of 100 entries per page. In the HTTP response header, the current page, the entries per page and the number of total entries is reported. There is also a link header to links to the consecutive page.\n\n- **X-Page** \u2013 3\n- **X-Per-Page** \u2013 100\n- **X-Total** \u2013 415\n- **Link** \u2013 `<https://{domain}.mocoapp.com/api/v1/projects.json?page=4>; rel=\"next\"`\n\nIf there is not Link header with `rel=\"next\"`, the current page is the last page.\n\n## Errors and HTTP status codes\nThe MOCO-API is mostly conformant with the [general HTTP status codes](https://en.wikipedia.org/wiki/List_of_HTTP_status_codes).\n\nHere are the most comment errors you will see:\n\n- **401 Unauthorized** - Check the error message in the response body\n- **403 Forbidden** - Check your [Authentication](#authentication) or your MOCO user permission\n- **404 Not Found** - Check that resource exists (maybe it was deleted in the meantime)\n- **422 Unprocessable Entity** - Check the provided error message in the response body\n- **429 Too Many Requests** - Check [Rate Limiting](#rate-limiting)\n\nSorting is controlled by the `sort_by` query parameter. Its value is the field name that should be sorted, followed by an optional sorting order (`asc` or `desc`, default is `asc`).\n\nExample:\n\n- `https://{domain}.mocoapp.com/api/v1/offers?sort_by=title desc`"
+servers:
+  -
+    url: "https://{domain}.mocoapp.com/api/v1"
+    description: Base server URL for the MOCO API.
+tags:
+  -
+    name: Projects
+    description: "German: \"Projekte\"\n\n- TOC"
+components:
+  securitySchemes:
+    TokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: "There's two ways to authenticate against MOCO:\n\n1. **User API key**. Can be found under the \"Integrations\" tab on the profile page.\n2. **Account API key**. Has to be created in Settings > Extensions > API & Webhooks, with either read-only or full access on all endpoints.\n\nBoth kinds of keys are provided as an Authorization header.\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/projects.json' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis key can also be requested via API for user-specific keys:\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/session \\\n  -H 'Accept: application/json' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"email\": \"max@muster.de\",\n    \"password\": \"secret\"\n  }'\n```\n\nIt's also possible to verify if the API key is still valid:\n\n```bash\ncurl https://{domain}.mocoapp.com/api/v1/session \\\n  -H 'Accept: application/json' \\\n  -H 'Content-Type: application/json'\n```\n\nIf the key is valid, the response code id `200 ok` and the body is:\n\n```json\n{\n  \"id\": 123,\n  \"uuid\": \"aec324a2-4832-11eb-b378-0242ac130002\"\n}\n```\n\notherwise the response code is `401 unauthorized`.\nThere are a few tools to try out the MOCO API. All the examples in this documentation use `curl` to demonstrate the API endpoint.\nA popular graphical UI for REST is [Postman](https://www.postman.com/). Here's an example request for the projects list including the authentication:\n\n![Postman example request](moco-api-postman.png \"Postman example request\")"
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: Pagination support as described in the general documentation.
+      schema:
+        type: integer
+        minimum: 1
+    PerPage:
+      name: per_page
+      in: query
+      description: Number of items per page for paginated responses.
+      schema:
+        type: integer
+        minimum: 1
+    SortBy:
+      name: sort_by
+      in: query
+      description: Sorting is controlled by the `sort_by` query parameter. Provide the field name and optional order (asc or desc).
+      schema:
+        type: string
+    Ids:
+      name: ids
+      in: query
+      description: "Usage: `GET /api/v1/entities?ids=123,456`\n\nAllows you to filter by comma-separated IDs and fetch multiple entities."
+      schema:
+        type: string
+    UpdatedAfter:
+      name: updated_after
+      in: query
+      description: "Usage: `GET /api/v1/entities?updated_after=2022-04-20T09:17:58Z` (ISO8601 timestamp)\n\nEnables you to give a timestamp for all entities that are created or updated after this timestamp, especially useful for synchronisation purposes.\n\nCombine it with a [webhook subscription](webhooks) on DELETE for the entity to have a complete synchronisation."
+      schema:
+        type: string
+        format: "date-time"
+    CustomProperties:
+      name: custom_properties
+      in: query
+      description: "Allows you to filter entities by one or more custom fields. The filter for the custom fields is passed via the query-parameter `custom_properties`. To query entities that contain the value \"Automotive\" in a custom field named \"Sector\", the query would need to be as follows:\n\n`GET /api/v1/entities?custom_properties[Sector]=Automotive`\n\nFiltering by an unknown custom field will result in an empty result set!"
+      schema:
+        type: object
+        additionalProperties: true
+      style: deepObject
+      explode: true
+  schemas:
+    ErrorResponse:
+      type: object
+      description: Generic error response body.
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      additionalProperties: true
+    Projects:
+      type: object
+      description: "The project representation contains, among the standard fields, also:\n\n- custom properties\n- project leader (user)\n- customer\n- deal (optional)\n- tasks (services)\n- contracts (assigned staff)\n- project group\n\nThe attributes `hourly_rate` and `billing_variant` are linked. By choosing the billing variant \"project\", the hourly rate is just that. If choosing \"task\" (depending on the service) or \"user\" (depending on the staff), hourly rate becomes the mean value of hourly rates. Thus, `hourly_rate` on a `task` or `contract` only become relevant if the `billing_variant` is set accordingly.\n\n```json\n{\n  \"id\": 1234567,\n  \"identifier\": \"P001\",\n  \"name\": \"Website Support\",\n  \"active\": true,\n  \"billable\": true,\n  \"fixed_price\": true,\n  \"retainer\": false,\n  \"start_date\": null,\n  \"finish_date\": \"2018-12-31\",\n  \"color\": \"#CCCC00\",\n  \"currency\": \"EUR\",\n  \"billing_variant\": \"project\",\n  \"billing_address\": \"Beispiel AG\\nHerr Maier\\nBeispielstrasse...\",\n  \"billing_email_to\": \"project@beispiel.co\",\n  \"billing_email_cc\": \"project-cc@beispiel.co\",\n  \"billing_notes\": \"Billig notes text\",\n  \"setting_include_time_report\": true,\n  \"budget\": 18200,\n  \"budget_monthly\": null,\n  \"budget_expenses\": 8200,\n  \"hourly_rate\": 150,\n  \"info\": \"Abrechnung j\u00e4hrlich\",\n  \"tags\": [\"Print\", \"Digital\"],\n  \"customer_report_url\": \"https://mycompany.mocoapp.com/projects/1234567/customer_report/cfd1901d23e000712488\",\n  \"custom_properties\": {\n    \"Project Management\": \"https://basecamp.com/123456\"\n  },\n  \"leader\": {\n    \"id\": 933590696,\n    \"firstname\": \"Michael\",\n    \"lastname\": \"Mustermann\"\n  },\n  \"co_leader\": null,\n  \"customer\": {\n    \"id\": 1233434,\n    \"name\": \"Beispiel AG\"\n  },\n  \"deal\": {\n    \"id\": 5635453,\n    \"name\": \"Website Relaunch\"\n  },\n  \"tasks\": [\n    {\n      \"id\": 125112,\n      \"name\": \"Project Management\",\n      \"billable\": true,\n      \"active\": true,\n      \"budget\": null,\n      \"hourly_rate\": 0,\n      \"description\": \"A task description\"\n    },\n    {\n      \"id\": 125111,\n      \"name\": \"Development\",\n      \"billable\": true,\n      \"active\": true,\n      \"budget\": null,\n      \"hourly_rate\": 0,\n      \"description\": \"A task description\"\n    }\n  ],\n  \"contracts\": [\n    {\n      \"id\": 458639048,\n      \"user_id\": 933590696,\n      \"firstname\": \"Michael\",\n      \"lastname\": \"Mustermann\",\n      \"billable\": true,\n      \"active\": true,\n      \"budget\": null,\n      \"hourly_rate\": 0\n    },\n    {\n      \"id\": 458672097,\n      \"user_id\": 933589591,\n      \"firstname\": \"Nicola\",\n      \"lastname\": \"Piccinini\",\n      \"billable\": true,\n      \"active\": true,\n      \"budget\": null,\n      \"hourly_rate\": 0\n    }\n  ],\n  \"project_group\": {\n    \"id\": 456687,\n    \"name\": \"Webpages\"\n  },\n  \"billing_contact\": {\n    \"id\": 1234,\n    \"firstname\": \"Maxine\",\n    \"lastname\": \"Muster\"\n  },\n  \"contact\": {\n    \"id\": 2345,\n    \"firstname\": \"Max\",\n    \"lastname\": \"Muster\"\n  },\n  \"secondary_contact\": {\n    \"id\": 3456,\n    \"firstname\": \"Meike\",\n    \"lastname\": \"Muster\"\n  },\n  \"created_at\": \"2018-10-17T09:33:46Z\",\n  \"updated_at\": \"2018-10-17T09:33:46Z\"\n}\n```\n\nCustom fields reference:\nMOCO supports saving custom fields to many of its resources. These custom fields are readable and writable via the `custom_properties` field.\n\n Custom fields must first be defined in the MOCO settings.\n\n The size of the custom_properties field is limitted to 12 kB.\n\n```json\n\"custom_properties\": {\n    \"UID\": \"123-UID-456\",\n    \"Line of business\": \"Automotive\"\n}\n```\n\nParameters are sent with their name as key:\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/customers \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n    \"name\": \"Beispiel AG\",\n    \"currency\": \"CHF\",\n    \"custom_properties\": {\n      \"Line of business\": \"Automotive\"\n    }\n  }'\n```\n\nAll values are encoded as strings, expect for Multiple Choice, which is encoded as an array.\n\n```bash\ncurl -X POST \\\n  https://{domain}.mocoapp.com/api/v1/customers \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"custom_properties\": {\n          \"Line of business\": [\"Automotive\", \"Banking\"]\n        }\n      }'\n```\n\n- Single-line input \u2013 \"Automotive\"\n- Mehrzeilige Eingabe \u2013 \"A multiline input...\"\n- Link \u2013 \"https://www...\"\n- Date \u2013 \"2021-12-31\"\n- Yes/No \u2013 \"0\", \"1\" (0 = No, 1 = Yes)\n- Single choice \u2013 \"Value\"\n- Multiple choice \u2013 [\"Value 1\", \"Value 2\"]\n\n\nThe provided custom properties are merged with the existing custom properties of the entity. That is, only the provided custom properties are updated and the other custom properties of the entity are left unchanged.\nIt is possible to filter entities by custom fields, as described in\n[Global filters](./entities#filter-by-custom-fields-\u2013-custom_properties)"
+      example:
+        id: 1234567
+        identifier: P001
+        name: Website Support
+        active: true
+        billable: true
+        fixed_price: true
+        retainer: false
+        start_date: null
+        finish_date: "2018-12-31"
+        color: "#CCCC00"
+        currency: EUR
+        billing_variant: project
+        billing_address: "Beispiel AG\nHerr Maier\nBeispielstrasse..."
+        billing_email_to: project@beispiel.co
+        billing_email_cc: "project-cc@beispiel.co"
+        billing_notes: Billig notes text
+        setting_include_time_report: true
+        budget: 18200
+        budget_monthly: null
+        budget_expenses: 8200
+        hourly_rate: 150
+        info: Abrechnung jährlich
+        tags:
+          - Print
+          - Digital
+        customer_report_url: "https://mycompany.mocoapp.com/projects/1234567/customer_report/cfd1901d23e000712488"
+        custom_properties:
+          Project Management: "https://basecamp.com/123456"
+        leader:
+          id: 933590696
+          firstname: Michael
+          lastname: Mustermann
+        co_leader: null
+        customer:
+          id: 1233434
+          name: Beispiel AG
+        deal:
+          id: 5635453
+          name: Website Relaunch
+        tasks:
+          -
+            id: 125112
+            name: Project Management
+            billable: true
+            active: true
+            budget: null
+            hourly_rate: 0
+            description: A task description
+          -
+            id: 125111
+            name: Development
+            billable: true
+            active: true
+            budget: null
+            hourly_rate: 0
+            description: A task description
+        contracts:
+          -
+            id: 458639048
+            user_id: 933590696
+            firstname: Michael
+            lastname: Mustermann
+            billable: true
+            active: true
+            budget: null
+            hourly_rate: 0
+          -
+            id: 458672097
+            user_id: 933589591
+            firstname: Nicola
+            lastname: Piccinini
+            billable: true
+            active: true
+            budget: null
+            hourly_rate: 0
+        project_group:
+          id: 456687
+          name: Webpages
+        billing_contact:
+          id: 1234
+          firstname: Maxine
+          lastname: Muster
+        contact:
+          id: 2345
+          firstname: Max
+          lastname: Muster
+        secondary_contact:
+          id: 3456
+          firstname: Meike
+          lastname: Muster
+        created_at: "2018-10-17T09:33:46Z"
+        updated_at: "2018-10-17T09:33:46Z"
+security:
+  -
+    TokenAuth:
+      []
+paths:
+  /projects:
+    get:
+      summary: GET /projects
+      description: "Retrieve all projects:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/projects' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns an array with complete project information (see Attributes).\n\nThe following parameters can be supplied:\n\n- [Global filters apply](../entities#global-filters)\n- **include_archived** \u2013 true/false\n- **include_company** \u2013 true/false (returns a complete company instead of just ID and name)\n- **leader_id** \u2013 123456 (project (co-)leader user ID; also multiple values, comma-separated)\n- **company_id** \u2013 123456 (also multiple values, comma-separated)\n- **created_from** \u2013 \"2018-01-01\"\n- **created_to** \u2013 \"2018-12-31\"\n- **updated_from** \u2013 \"2018-01-01\"\n- **updated_to** \u2013 \"2018-12-31\"\n- **tags** \u2013 \"Important, Strategic\" (comma separated list)\n- **identifier** \u2013 \"P1903-003\" (also multiple values, comma-separated)\n- **retainer** \u2013 true/false\n- **project_group_id** \u2013 4566687 (also multiple values, comma-separated)\n- **deal_id** \u2013 123456 (also multiple values, comma-separated)"
+      tags:
+        - Projects
+      security:
+        -
+          TokenAuth:
+            []
+      parameters:
+        -
+          $ref: "#/components/parameters/Ids"
+        -
+          $ref: "#/components/parameters/UpdatedAfter"
+        -
+          $ref: "#/components/parameters/CustomProperties"
+        -
+          $ref: "#/components/parameters/Page"
+        -
+          $ref: "#/components/parameters/PerPage"
+        -
+          $ref: "#/components/parameters/SortBy"
+      responses:
+        200:
+          description: "Retrieve all projects:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/projects' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns an array with complete project information (see Attributes)."
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Projects"
+              examples:
+                example:
+                  value:
+                    -
+                      id: 1234567
+                      identifier: P001
+                      name: Website Support
+                      active: true
+                      billable: true
+                      fixed_price: true
+                      retainer: false
+                      start_date: null
+                      finish_date: "2018-12-31"
+                      color: "#CCCC00"
+                      currency: EUR
+                      billing_variant: project
+                      billing_address: "Beispiel AG\nHerr Maier\nBeispielstrasse..."
+                      billing_email_to: project@beispiel.co
+                      billing_email_cc: "project-cc@beispiel.co"
+                      billing_notes: Billig notes text
+                      setting_include_time_report: true
+                      budget: 18200
+                      budget_monthly: null
+                      budget_expenses: 8200
+                      hourly_rate: 150
+                      info: Abrechnung jährlich
+                      tags:
+                        - Print
+                        - Digital
+                      customer_report_url: "https://mycompany.mocoapp.com/projects/1234567/customer_report/cfd1901d23e000712488"
+                      custom_properties:
+                        Project Management: "https://basecamp.com/123456"
+                      leader:
+                        id: 933590696
+                        firstname: Michael
+                        lastname: Mustermann
+                      co_leader: null
+                      customer:
+                        id: 1233434
+                        name: Beispiel AG
+                      deal:
+                        id: 5635453
+                        name: Website Relaunch
+                      tasks:
+                        -
+                          id: 125112
+                          name: Project Management
+                          billable: true
+                          active: true
+                          budget: null
+                          hourly_rate: 0
+                          description: A task description
+                        -
+                          id: 125111
+                          name: Development
+                          billable: true
+                          active: true
+                          budget: null
+                          hourly_rate: 0
+                          description: A task description
+                      contracts:
+                        -
+                          id: 458639048
+                          user_id: 933590696
+                          firstname: Michael
+                          lastname: Mustermann
+                          billable: true
+                          active: true
+                          budget: null
+                          hourly_rate: 0
+                        -
+                          id: 458672097
+                          user_id: 933589591
+                          firstname: Nicola
+                          lastname: Piccinini
+                          billable: true
+                          active: true
+                          budget: null
+                          hourly_rate: 0
+                      project_group:
+                        id: 456687
+                        name: Webpages
+                      billing_contact:
+                        id: 1234
+                        firstname: Maxine
+                        lastname: Muster
+                      contact:
+                        id: 2345
+                        firstname: Max
+                        lastname: Muster
+                      secondary_contact:
+                        id: 3456
+                        firstname: Meike
+                        lastname: Muster
+                      created_at: "2018-10-17T09:33:46Z"
+                      updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getProjectsProjects
+    post:
+      summary: POST /projects
+      description: "Create a project:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/projects' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"name\": \"Website Relaunch\",\n        \"currency\": \"EUR\",\n        \"leader_id\": \"1234\",\n        \"customer_id\": \"5678\",\n        \"tags\": [\"Print\", \"Digital\"],\n      }'\n```\n\nMandatory fields are marked with a star (\\*):\n\n- **name\\*** \u2013 \"Relaunch Website\"\n- **currency\\*** \u2013 \"EUR\"\n- **start_date\\*** \u2013 \"2018-01-01\"\n- **finish_date\\*** \u2013 \"2018-12-31\"\n- **fixed_price\\*** \u2013 true/false\n- **retainer\\*** \u2013 true/false \u26a0 see below requirements for other fields\n- **leader_id\\*** \u2013 123456 (user ID)\n- **co_leader_id** \u2013 12345 (user ID)\n- **customer_id\\*** \u2013 234567\n- **deal_id** \u2013 123456 (deal ID)\n- **project_group_id** - 123456 (project group ID)\n- **contact_id** - 123456 (contact ID)\n- **secondary_contact_id** - 56789 (contact ID)\n- **billing_contact_id** - 56789 (contact ID)\n- **identifier\\*** \u2013 \"P-123\" (only mandatory if number ranges are manual)\n- **billing_address** \u2013 \"Beispiel AG\\nBeispielstrasse 123\\n12345 Berlin\"\n- **billing_email_to** - \"project@beispiel.co\"\n- **billing_email_cc** - \"project-cc@beispiel.co\"\n- **billing_notes** - \"Billing notes text\"\n- **setting_include_time_report** - true / false\n- **billing_variant** \u2013 \"project\", \"task\" or \"user\" (default: \"project\")\n- **hourly_rate** \u2013 150\n- **budget** \u2013 20000\n- **budget_monthly** \u2013 2000\n- **budget_expenses** - 5000\n- **tags** \u2013 [\"Print\", \"Digital\"]\n- **custom_properties** \u2013 {\"PO-Nummer\": \"123-ABC\"}\n- **info** \u2013 \"Info for this project\"\n- **skip_favorite** \u2013 don't add this project to the leaders' favorites\n\nIf the field `retainer` is true, the fields `start_date`, `finish_date`, `budget_monthly` are mandatory. Also the start date has to be on the first and the finish date on the last of a month!"
+      tags:
+        - Projects
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        201:
+          description: "Create a project:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/projects' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"name\": \"Website Relaunch\",\n        \"currency\": \"EUR\",\n        \"leader_id\": \"1234\",\n        \"customer_id\": \"5678\",\n        \"tags\": [\"Print\", \"Digital\"],\n      }'\n```\n\nMandatory fields are marked with a star (\\*):\n\n- **name\\*** \u2013 \"Relaunch Website\"\n- **currency\\*** \u2013 \"EUR\"\n- **start_date\\*** \u2013 \"2018-01-01\"\n- **finish_date\\*** \u2013 \"2018-12-31\"\n- **fixed_price\\*** \u2013 true/false\n- **retainer\\*** \u2013 true/false \u26a0 see below requirements for other fields\n- **leader_id\\*** \u2013 123456 (user ID)\n- **co_leader_id** \u2013 12345 (user ID)\n- **customer_id\\*** \u2013 234567\n- **deal_id** \u2013 123456 (deal ID)\n- **project_group_id** - 123456 (project group ID)\n- **contact_id** - 123456 (contact ID)\n- **secondary_contact_id** - 56789 (contact ID)\n- **billing_contact_id** - 56789 (contact ID)\n- **identifier\\*** \u2013 \"P-123\" (only mandatory if number ranges are manual)\n- **billing_address** \u2013 \"Beispiel AG\\nBeispielstrasse 123\\n12345 Berlin\"\n- **billing_email_to** - \"project@beispiel.co\"\n- **billing_email_cc** - \"project-cc@beispiel.co\"\n- **billing_notes** - \"Billing notes text\"\n- **setting_include_time_report** - true / false\n- **billing_variant** \u2013 \"project\", \"task\" or \"user\" (default: \"project\")\n- **hourly_rate** \u2013 150\n- **budget** \u2013 20000\n- **budget_monthly** \u2013 2000\n- **budget_expenses** - 5000\n- **tags** \u2013 [\"Print\", \"Digital\"]\n- **custom_properties** \u2013 {\"PO-Nummer\": \"123-ABC\"}\n- **info** \u2013 \"Info for this project\"\n- **skip_favorite** \u2013 don't add this project to the leaders' favorites\n\nIf the field `retainer` is true, the fields `start_date`, `finish_date`, `budget_monthly` are mandatory."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Projects"
+              examples:
+                example:
+                  value:
+                    name: Website Relaunch
+                    currency: EUR
+                    leader_id: 1234
+                    customer_id: 5678
+                    tags:
+                      - Print
+                      - Digital
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Projects"
+            examples:
+              example:
+                value:
+                  name: Website Relaunch
+                  currency: EUR
+                  leader_id: 1234
+                  customer_id: 5678
+                  tags:
+                    - Print
+                    - Digital
+      operationId: postProjectsProjects
+  /projects/assigned:
+    get:
+      summary: GET /projects/assigned
+      description: "Retrieve all projects assigned to the user:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/projects/assigned' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns an array with limited project information.\n\n```json\n[\n  {\n    \"id\": 1234,\n    \"identifier\": \"P1900\",\n    \"name\": \"Application\",\n    \"active\": false,\n    \"billable\": true,\n    \"customer\": {\n      \"id\": 4567,\n      \"name\": \"A Company\"\n    },\n    \"tasks\": [\n      {\n        \"id\": 573383,\n        \"name\": \"Integrations\",\n        \"active\": true,\n        \"billable\": true\n      }\n    ],\n    \"contract\": {\n      \"user_id\": 65455,\n      \"active\": true\n    }\n  }\n]\n```\n\nThe following parameters can be supplied:\n\n- **active** \u2013 true/false"
+      tags:
+        - Projects
+      security:
+        -
+          TokenAuth:
+            []
+      parameters:
+        -
+          $ref: "#/components/parameters/Ids"
+        -
+          $ref: "#/components/parameters/UpdatedAfter"
+        -
+          $ref: "#/components/parameters/CustomProperties"
+        -
+          $ref: "#/components/parameters/Page"
+        -
+          $ref: "#/components/parameters/PerPage"
+        -
+          $ref: "#/components/parameters/SortBy"
+      responses:
+        200:
+          description: "Retrieve all projects assigned to the user:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/projects/assigned' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns an array with limited project information."
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Projects"
+              examples:
+                example:
+                  value:
+                    -
+                      id: 1234
+                      identifier: P1900
+                      name: Application
+                      active: false
+                      billable: true
+                      customer:
+                        id: 4567
+                        name: A Company
+                      tasks:
+                        -
+                          id: 573383
+                          name: Integrations
+                          active: true
+                          billable: true
+                      contract:
+                        user_id: 65455
+                        active: true
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getProjectsAssignedProjects
+  /projects/{id}:
+    get:
+      summary: "GET /projects/{id}"
+      description: "Retrieve a single project:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns a single project representation."
+      tags:
+        - Projects
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Retrieve a single project:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns a single project representation."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Projects"
+              examples:
+                example:
+                  value:
+                    id: 1234567
+                    identifier: P001
+                    name: Website Support
+                    active: true
+                    billable: true
+                    fixed_price: true
+                    retainer: false
+                    start_date: null
+                    finish_date: "2018-12-31"
+                    color: "#CCCC00"
+                    currency: EUR
+                    billing_variant: project
+                    billing_address: "Beispiel AG\nHerr Maier\nBeispielstrasse..."
+                    billing_email_to: project@beispiel.co
+                    billing_email_cc: "project-cc@beispiel.co"
+                    billing_notes: Billig notes text
+                    setting_include_time_report: true
+                    budget: 18200
+                    budget_monthly: null
+                    budget_expenses: 8200
+                    hourly_rate: 150
+                    info: Abrechnung jährlich
+                    tags:
+                      - Print
+                      - Digital
+                    customer_report_url: "https://mycompany.mocoapp.com/projects/1234567/customer_report/cfd1901d23e000712488"
+                    custom_properties:
+                      Project Management: "https://basecamp.com/123456"
+                    leader:
+                      id: 933590696
+                      firstname: Michael
+                      lastname: Mustermann
+                    co_leader: null
+                    customer:
+                      id: 1233434
+                      name: Beispiel AG
+                    deal:
+                      id: 5635453
+                      name: Website Relaunch
+                    tasks:
+                      -
+                        id: 125112
+                        name: Project Management
+                        billable: true
+                        active: true
+                        budget: null
+                        hourly_rate: 0
+                        description: A task description
+                      -
+                        id: 125111
+                        name: Development
+                        billable: true
+                        active: true
+                        budget: null
+                        hourly_rate: 0
+                        description: A task description
+                    contracts:
+                      -
+                        id: 458639048
+                        user_id: 933590696
+                        firstname: Michael
+                        lastname: Mustermann
+                        billable: true
+                        active: true
+                        budget: null
+                        hourly_rate: 0
+                      -
+                        id: 458672097
+                        user_id: 933589591
+                        firstname: Nicola
+                        lastname: Piccinini
+                        billable: true
+                        active: true
+                        budget: null
+                        hourly_rate: 0
+                    project_group:
+                      id: 456687
+                      name: Webpages
+                    billing_contact:
+                      id: 1234
+                      firstname: Maxine
+                      lastname: Muster
+                    contact:
+                      id: 2345
+                      firstname: Max
+                      lastname: Muster
+                    secondary_contact:
+                      id: 3456
+                      firstname: Meike
+                      lastname: Muster
+                    created_at: "2018-10-17T09:33:46Z"
+                    updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getProjectsIdProjects
+    put:
+      summary: "PUT /projects/{id}"
+      description: "Update a project:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"budget\": 25000\n      }'\n```\n\nFields are analogous to the POST request, except for `currency` which cannot be modified after creation."
+      tags:
+        - Projects
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Update a project:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"budget\": 25000\n      }'\n```\n\nFields are analogous to the POST request, except for `currency` which cannot be modified after creation."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Projects"
+              examples:
+                example:
+                  value:
+                    budget: 25000
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Projects"
+            examples:
+              example:
+                value:
+                  budget: 25000
+      operationId: putProjectsIdProjects
+    delete:
+      summary: "DELETE /projects/{id}"
+      description: "Deletes a project. It's possible only if there are no activities, invoices, offers or expenses.\n\n```bash\ncurl -X DELETE \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```"
+      tags:
+        - Projects
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        204:
+          description: Deletes a project.
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: deleteProjectsIdProjects
+  /projects/{id}/archive:
+    put:
+      summary: "PUT /projects/{id}/archive"
+      description: "Archival of a project:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}/archive' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json'\n```"
+      tags:
+        - Projects
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Archival of a project:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}/archive' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json'\n```"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Projects"
+              examples:
+                example:
+                  value:
+                    id: 1234567
+                    identifier: P001
+                    name: Website Support
+                    active: true
+                    billable: true
+                    fixed_price: true
+                    retainer: false
+                    start_date: null
+                    finish_date: "2018-12-31"
+                    color: "#CCCC00"
+                    currency: EUR
+                    billing_variant: project
+                    billing_address: "Beispiel AG\nHerr Maier\nBeispielstrasse..."
+                    billing_email_to: project@beispiel.co
+                    billing_email_cc: "project-cc@beispiel.co"
+                    billing_notes: Billig notes text
+                    setting_include_time_report: true
+                    budget: 18200
+                    budget_monthly: null
+                    budget_expenses: 8200
+                    hourly_rate: 150
+                    info: Abrechnung jährlich
+                    tags:
+                      - Print
+                      - Digital
+                    customer_report_url: "https://mycompany.mocoapp.com/projects/1234567/customer_report/cfd1901d23e000712488"
+                    custom_properties:
+                      Project Management: "https://basecamp.com/123456"
+                    leader:
+                      id: 933590696
+                      firstname: Michael
+                      lastname: Mustermann
+                    co_leader: null
+                    customer:
+                      id: 1233434
+                      name: Beispiel AG
+                    deal:
+                      id: 5635453
+                      name: Website Relaunch
+                    tasks:
+                      -
+                        id: 125112
+                        name: Project Management
+                        billable: true
+                        active: true
+                        budget: null
+                        hourly_rate: 0
+                        description: A task description
+                      -
+                        id: 125111
+                        name: Development
+                        billable: true
+                        active: true
+                        budget: null
+                        hourly_rate: 0
+                        description: A task description
+                    contracts:
+                      -
+                        id: 458639048
+                        user_id: 933590696
+                        firstname: Michael
+                        lastname: Mustermann
+                        billable: true
+                        active: true
+                        budget: null
+                        hourly_rate: 0
+                      -
+                        id: 458672097
+                        user_id: 933589591
+                        firstname: Nicola
+                        lastname: Piccinini
+                        billable: true
+                        active: true
+                        budget: null
+                        hourly_rate: 0
+                    project_group:
+                      id: 456687
+                      name: Webpages
+                    billing_contact:
+                      id: 1234
+                      firstname: Maxine
+                      lastname: Muster
+                    contact:
+                      id: 2345
+                      firstname: Max
+                      lastname: Muster
+                    secondary_contact:
+                      id: 3456
+                      firstname: Meike
+                      lastname: Muster
+                    created_at: "2018-10-17T09:33:46Z"
+                    updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Projects"
+            examples:
+              example:
+                value:
+                  id: 1234567
+                  identifier: P001
+                  name: Website Support
+                  active: true
+                  billable: true
+                  fixed_price: true
+                  retainer: false
+                  start_date: null
+                  finish_date: "2018-12-31"
+                  color: "#CCCC00"
+                  currency: EUR
+                  billing_variant: project
+                  billing_address: "Beispiel AG\nHerr Maier\nBeispielstrasse..."
+                  billing_email_to: project@beispiel.co
+                  billing_email_cc: "project-cc@beispiel.co"
+                  billing_notes: Billig notes text
+                  setting_include_time_report: true
+                  budget: 18200
+                  budget_monthly: null
+                  budget_expenses: 8200
+                  hourly_rate: 150
+                  info: Abrechnung jährlich
+                  tags:
+                    - Print
+                    - Digital
+                  customer_report_url: "https://mycompany.mocoapp.com/projects/1234567/customer_report/cfd1901d23e000712488"
+                  custom_properties:
+                    Project Management: "https://basecamp.com/123456"
+                  leader:
+                    id: 933590696
+                    firstname: Michael
+                    lastname: Mustermann
+                  co_leader: null
+                  customer:
+                    id: 1233434
+                    name: Beispiel AG
+                  deal:
+                    id: 5635453
+                    name: Website Relaunch
+                  tasks:
+                    -
+                      id: 125112
+                      name: Project Management
+                      billable: true
+                      active: true
+                      budget: null
+                      hourly_rate: 0
+                      description: A task description
+                    -
+                      id: 125111
+                      name: Development
+                      billable: true
+                      active: true
+                      budget: null
+                      hourly_rate: 0
+                      description: A task description
+                  contracts:
+                    -
+                      id: 458639048
+                      user_id: 933590696
+                      firstname: Michael
+                      lastname: Mustermann
+                      billable: true
+                      active: true
+                      budget: null
+                      hourly_rate: 0
+                    -
+                      id: 458672097
+                      user_id: 933589591
+                      firstname: Nicola
+                      lastname: Piccinini
+                      billable: true
+                      active: true
+                      budget: null
+                      hourly_rate: 0
+                  project_group:
+                    id: 456687
+                    name: Webpages
+                  billing_contact:
+                    id: 1234
+                    firstname: Maxine
+                    lastname: Muster
+                  contact:
+                    id: 2345
+                    firstname: Max
+                    lastname: Muster
+                  secondary_contact:
+                    id: 3456
+                    firstname: Meike
+                    lastname: Muster
+                  created_at: "2018-10-17T09:33:46Z"
+                  updated_at: "2018-10-17T09:33:46Z"
+      operationId: putProjectsIdArchiveProjects
+  /projects/{id}/unarchive:
+    put:
+      summary: "PUT /projects/{id}/unarchive"
+      description: "Reactivate an archived project:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}/unarchive' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json'\n```"
+      tags:
+        - Projects
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Reactivate an archived project:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}/unarchive' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json'\n```"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Projects"
+              examples:
+                example:
+                  value:
+                    id: 1234567
+                    identifier: P001
+                    name: Website Support
+                    active: true
+                    billable: true
+                    fixed_price: true
+                    retainer: false
+                    start_date: null
+                    finish_date: "2018-12-31"
+                    color: "#CCCC00"
+                    currency: EUR
+                    billing_variant: project
+                    billing_address: "Beispiel AG\nHerr Maier\nBeispielstrasse..."
+                    billing_email_to: project@beispiel.co
+                    billing_email_cc: "project-cc@beispiel.co"
+                    billing_notes: Billig notes text
+                    setting_include_time_report: true
+                    budget: 18200
+                    budget_monthly: null
+                    budget_expenses: 8200
+                    hourly_rate: 150
+                    info: Abrechnung jährlich
+                    tags:
+                      - Print
+                      - Digital
+                    customer_report_url: "https://mycompany.mocoapp.com/projects/1234567/customer_report/cfd1901d23e000712488"
+                    custom_properties:
+                      Project Management: "https://basecamp.com/123456"
+                    leader:
+                      id: 933590696
+                      firstname: Michael
+                      lastname: Mustermann
+                    co_leader: null
+                    customer:
+                      id: 1233434
+                      name: Beispiel AG
+                    deal:
+                      id: 5635453
+                      name: Website Relaunch
+                    tasks:
+                      -
+                        id: 125112
+                        name: Project Management
+                        billable: true
+                        active: true
+                        budget: null
+                        hourly_rate: 0
+                        description: A task description
+                      -
+                        id: 125111
+                        name: Development
+                        billable: true
+                        active: true
+                        budget: null
+                        hourly_rate: 0
+                        description: A task description
+                    contracts:
+                      -
+                        id: 458639048
+                        user_id: 933590696
+                        firstname: Michael
+                        lastname: Mustermann
+                        billable: true
+                        active: true
+                        budget: null
+                        hourly_rate: 0
+                      -
+                        id: 458672097
+                        user_id: 933589591
+                        firstname: Nicola
+                        lastname: Piccinini
+                        billable: true
+                        active: true
+                        budget: null
+                        hourly_rate: 0
+                    project_group:
+                      id: 456687
+                      name: Webpages
+                    billing_contact:
+                      id: 1234
+                      firstname: Maxine
+                      lastname: Muster
+                    contact:
+                      id: 2345
+                      firstname: Max
+                      lastname: Muster
+                    secondary_contact:
+                      id: 3456
+                      firstname: Meike
+                      lastname: Muster
+                    created_at: "2018-10-17T09:33:46Z"
+                    updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Projects"
+            examples:
+              example:
+                value:
+                  id: 1234567
+                  identifier: P001
+                  name: Website Support
+                  active: true
+                  billable: true
+                  fixed_price: true
+                  retainer: false
+                  start_date: null
+                  finish_date: "2018-12-31"
+                  color: "#CCCC00"
+                  currency: EUR
+                  billing_variant: project
+                  billing_address: "Beispiel AG\nHerr Maier\nBeispielstrasse..."
+                  billing_email_to: project@beispiel.co
+                  billing_email_cc: "project-cc@beispiel.co"
+                  billing_notes: Billig notes text
+                  setting_include_time_report: true
+                  budget: 18200
+                  budget_monthly: null
+                  budget_expenses: 8200
+                  hourly_rate: 150
+                  info: Abrechnung jährlich
+                  tags:
+                    - Print
+                    - Digital
+                  customer_report_url: "https://mycompany.mocoapp.com/projects/1234567/customer_report/cfd1901d23e000712488"
+                  custom_properties:
+                    Project Management: "https://basecamp.com/123456"
+                  leader:
+                    id: 933590696
+                    firstname: Michael
+                    lastname: Mustermann
+                  co_leader: null
+                  customer:
+                    id: 1233434
+                    name: Beispiel AG
+                  deal:
+                    id: 5635453
+                    name: Website Relaunch
+                  tasks:
+                    -
+                      id: 125112
+                      name: Project Management
+                      billable: true
+                      active: true
+                      budget: null
+                      hourly_rate: 0
+                      description: A task description
+                    -
+                      id: 125111
+                      name: Development
+                      billable: true
+                      active: true
+                      budget: null
+                      hourly_rate: 0
+                      description: A task description
+                  contracts:
+                    -
+                      id: 458639048
+                      user_id: 933590696
+                      firstname: Michael
+                      lastname: Mustermann
+                      billable: true
+                      active: true
+                      budget: null
+                      hourly_rate: 0
+                    -
+                      id: 458672097
+                      user_id: 933589591
+                      firstname: Nicola
+                      lastname: Piccinini
+                      billable: true
+                      active: true
+                      budget: null
+                      hourly_rate: 0
+                  project_group:
+                    id: 456687
+                    name: Webpages
+                  billing_contact:
+                    id: 1234
+                    firstname: Maxine
+                    lastname: Muster
+                  contact:
+                    id: 2345
+                    firstname: Max
+                    lastname: Muster
+                  secondary_contact:
+                    id: 3456
+                    firstname: Meike
+                    lastname: Muster
+                  created_at: "2018-10-17T09:33:46Z"
+                  updated_at: "2018-10-17T09:33:46Z"
+      operationId: putProjectsIdUnarchiveProjects
+  /projects/{id}/report:
+    get:
+      summary: "GET /projects/{id}/report"
+      description: "Retrieve a project report:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}/report' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns the most important project business indicators:\n\n```json\n{\n  \"budget_total\": 50000.0,\n  \"budget_progress_in_percentage\": 50,\n  \"budget_remaining\": 25.0,\n  \"invoiced_total\": 27885.0,\n  \"currency\": \"EUR\",\n  \"hours_total\": 1500,\n  \"hours_billable\": 1340,\n  \"hours_remaining\": 1500,\n  \"costs_expenses\": 4000.0,\n  \"costs_activities\": 16450.0,\n  \"costs_by_task\": [\n    {\n      \"id\": 7536,\n      \"name\": \"Project Management\",\n      \"hours_total\": 12.5,\n      \"total_costs\": 725.0\n    },\n    {\n      \"id\": 7239,\n      \"name\": \"Design\",\n      \"hours_total\": 71.98,\n      \"total_costs\": 5598.0\n    },\n    {\n      \"id\": 573376,\n      \"name\": \"Development\",\n      \"hours_total\": 94.48,\n      \"total_costs\": 9448.0\n    }\n  ]\n}\n```\n\nAll costs are in the account's main currency, it might differ from the budget and billable items!"
+      tags:
+        - Projects
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Retrieve a project report:\n\n```bash\ncurl -X GET \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}/report' \\\n  -H 'Authorization: Token token=YOUR_API_KEY'\n```\n\nThis returns the most important project business indicators:\n\n```json\n{\n  \"budget_total\": 50000.0,\n  \"budget_progress_in_percentage\": 50,\n  \"budget_remaining\": 25.0,\n  \"invoiced_total\": 27885.0,\n  \"currency\": \"EUR\",\n  \"hours_total\": 1500,\n  \"hours_billable\": 1340,\n  \"hours_remaining\": 1500,\n  \"costs_expenses\": 4000.0,\n  \"costs_activities\": 16450.0,\n  \"costs_by_task\": [\n    {\n      \"id\": 7536,\n      \"name\": \"Project Management\",\n      \"hours_total\": 12.5,\n      \"total_costs\": 725.0\n    },\n    {\n      \"id\": 7239,\n      \"name\": \"Design\",\n      \"hours_total\": 71.98,\n      \"total_costs\": 5598.0\n    },\n    {\n      \"id\": 573376,\n      \"name\": \"Development\",\n      \"hours_total\": 94.48,\n      \"total_costs\": 9448.0\n    }\n  ]\n}\n```\n\nAll costs are in the account's main currency, it might differ from the budget and billable items!"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Projects"
+              examples:
+                example:
+                  value:
+                    budget_total: 50000.0
+                    budget_progress_in_percentage: 50
+                    budget_remaining: 25.0
+                    invoiced_total: 27885.0
+                    currency: EUR
+                    hours_total: 1500
+                    hours_billable: 1340
+                    hours_remaining: 1500
+                    costs_expenses: 4000.0
+                    costs_activities: 16450.0
+                    costs_by_task:
+                      -
+                        id: 7536
+                        name: Project Management
+                        hours_total: 12.5
+                        total_costs: 725.0
+                      -
+                        id: 7239
+                        name: Design
+                        hours_total: 71.98
+                        total_costs: 5598.0
+                      -
+                        id: 573376
+                        name: Development
+                        hours_total: 94.48
+                        total_costs: 9448.0
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      operationId: getProjectsIdReportProjects
+  /projects/{id}/share:
+    put:
+      summary: "PUT /projects/{id}/share"
+      description: "Activate project report sharing:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}/share' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json'\n```\n\nThis returns the the following attributes:\n\n```json\n{\n  \"id\": 123,\n  \"active\": true,\n  \"url\": \"https://...\"\n}\n```"
+      tags:
+        - Projects
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Activate project report sharing:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}/share' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json'\n```\n\nThis returns the the following attributes:\n\n```json\n{\n  \"id\": 123,\n  \"active\": true,\n  \"url\": \"https://...\"\n}\n```"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Projects"
+              examples:
+                example:
+                  value:
+                    id: 123
+                    active: true
+                    url: "https://..."
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Projects"
+            examples:
+              example:
+                value:
+                  id: 123
+                  active: true
+                  url: "https://..."
+      operationId: putProjectsIdShareProjects
+  /projects/{id}/disable_share:
+    put:
+      summary: "PUT /projects/{id}/disable_share"
+      description: "Deactive project report sharing:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}/disable_share' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json'\n```\n\nThis returns the the following attributes:\n\n```json\n{\n  \"id\": 123,\n  \"active\": false,\n  \"url\": null\n}\n```"
+      tags:
+        - Projects
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Deactive project report sharing:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}/disable_share' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json'\n```\n\nThis returns the the following attributes:\n\n```json\n{\n  \"id\": 123,\n  \"active\": false,\n  \"url\": null\n}\n```"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Projects"
+              examples:
+                example:
+                  value:
+                    id: 123
+                    active: false
+                    url: null
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Projects"
+            examples:
+              example:
+                value:
+                  id: 123
+                  active: false
+                  url: null
+      operationId: putProjectsIdDisable_ShareProjects
+  /projects/{id}/assign_project_group:
+    put:
+      summary: "PUT /projects/{id}/assign_project_group"
+      description: "Assign this project to a project group:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}/assign_project_group' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n      \"project_group_id\": 123\n    }'\n```"
+      tags:
+        - Projects
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Assign this project to a project group:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}/assign_project_group' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n      \"project_group_id\": 123\n    }'\n```"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Projects"
+              examples:
+                example:
+                  value:
+                    project_group_id: 123
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Projects"
+            examples:
+              example:
+                value:
+                  project_group_id: 123
+      operationId: putProjectsIdAssign_Project_GroupProjects
+  /projects/{id}/unassign_project_group:
+    put:
+      summary: "PUT /projects/{id}/unassign_project_group"
+      description: "Unassign this project from its project group:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}/unassign_project_group' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json'\n```"
+      tags:
+        - Projects
+      security:
+        -
+          TokenAuth:
+            []
+      responses:
+        200:
+          description: "Unassign this project from its project group:\n\n```bash\ncurl -X PUT \\\n  'https://{domain}.mocoapp.com/api/v1/projects/{id}/unassign_project_group' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json'\n```"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Projects"
+              examples:
+                example:
+                  value:
+                    id: 1234567
+                    identifier: P001
+                    name: Website Support
+                    active: true
+                    billable: true
+                    fixed_price: true
+                    retainer: false
+                    start_date: null
+                    finish_date: "2018-12-31"
+                    color: "#CCCC00"
+                    currency: EUR
+                    billing_variant: project
+                    billing_address: "Beispiel AG\nHerr Maier\nBeispielstrasse..."
+                    billing_email_to: project@beispiel.co
+                    billing_email_cc: "project-cc@beispiel.co"
+                    billing_notes: Billig notes text
+                    setting_include_time_report: true
+                    budget: 18200
+                    budget_monthly: null
+                    budget_expenses: 8200
+                    hourly_rate: 150
+                    info: Abrechnung jährlich
+                    tags:
+                      - Print
+                      - Digital
+                    customer_report_url: "https://mycompany.mocoapp.com/projects/1234567/customer_report/cfd1901d23e000712488"
+                    custom_properties:
+                      Project Management: "https://basecamp.com/123456"
+                    leader:
+                      id: 933590696
+                      firstname: Michael
+                      lastname: Mustermann
+                    co_leader: null
+                    customer:
+                      id: 1233434
+                      name: Beispiel AG
+                    deal:
+                      id: 5635453
+                      name: Website Relaunch
+                    tasks:
+                      -
+                        id: 125112
+                        name: Project Management
+                        billable: true
+                        active: true
+                        budget: null
+                        hourly_rate: 0
+                        description: A task description
+                      -
+                        id: 125111
+                        name: Development
+                        billable: true
+                        active: true
+                        budget: null
+                        hourly_rate: 0
+                        description: A task description
+                    contracts:
+                      -
+                        id: 458639048
+                        user_id: 933590696
+                        firstname: Michael
+                        lastname: Mustermann
+                        billable: true
+                        active: true
+                        budget: null
+                        hourly_rate: 0
+                      -
+                        id: 458672097
+                        user_id: 933589591
+                        firstname: Nicola
+                        lastname: Piccinini
+                        billable: true
+                        active: true
+                        budget: null
+                        hourly_rate: 0
+                    project_group:
+                      id: 456687
+                      name: Webpages
+                    billing_contact:
+                      id: 1234
+                      firstname: Maxine
+                      lastname: Muster
+                    contact:
+                      id: 2345
+                      firstname: Max
+                      lastname: Muster
+                    secondary_contact:
+                      id: 3456
+                      firstname: Meike
+                      lastname: Muster
+                    created_at: "2018-10-17T09:33:46Z"
+                    updated_at: "2018-10-17T09:33:46Z"
+        default:
+          description: Error response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Projects"
+            examples:
+              example:
+                value:
+                  id: 1234567
+                  identifier: P001
+                  name: Website Support
+                  active: true
+                  billable: true
+                  fixed_price: true
+                  retainer: false
+                  start_date: null
+                  finish_date: "2018-12-31"
+                  color: "#CCCC00"
+                  currency: EUR
+                  billing_variant: project
+                  billing_address: "Beispiel AG\nHerr Maier\nBeispielstrasse..."
+                  billing_email_to: project@beispiel.co
+                  billing_email_cc: "project-cc@beispiel.co"
+                  billing_notes: Billig notes text
+                  setting_include_time_report: true
+                  budget: 18200
+                  budget_monthly: null
+                  budget_expenses: 8200
+                  hourly_rate: 150
+                  info: Abrechnung jährlich
+                  tags:
+                    - Print
+                    - Digital
+                  customer_report_url: "https://mycompany.mocoapp.com/projects/1234567/customer_report/cfd1901d23e000712488"
+                  custom_properties:
+                    Project Management: "https://basecamp.com/123456"
+                  leader:
+                    id: 933590696
+                    firstname: Michael
+                    lastname: Mustermann
+                  co_leader: null
+                  customer:
+                    id: 1233434
+                    name: Beispiel AG
+                  deal:
+                    id: 5635453
+                    name: Website Relaunch
+                  tasks:
+                    -
+                      id: 125112
+                      name: Project Management
+                      billable: true
+                      active: true
+                      budget: null
+                      hourly_rate: 0
+                      description: A task description
+                    -
+                      id: 125111
+                      name: Development
+                      billable: true
+                      active: true
+                      budget: null
+                      hourly_rate: 0
+                      description: A task description
+                  contracts:
+                    -
+                      id: 458639048
+                      user_id: 933590696
+                      firstname: Michael
+                      lastname: Mustermann
+                      billable: true
+                      active: true
+                      budget: null
+                      hourly_rate: 0
+                    -
+                      id: 458672097
+                      user_id: 933589591
+                      firstname: Nicola
+                      lastname: Piccinini
+                      billable: true
+                      active: true
+                      budget: null
+                      hourly_rate: 0
+                  project_group:
+                    id: 456687
+                    name: Webpages
+                  billing_contact:
+                    id: 1234
+                    firstname: Maxine
+                    lastname: Muster
+                  contact:
+                    id: 2345
+                    firstname: Max
+                    lastname: Muster
+                  secondary_contact:
+                    id: 3456
+                    firstname: Meike
+                    lastname: Muster
+                  created_at: "2018-10-17T09:33:46Z"
+                  updated_at: "2018-10-17T09:33:46Z"
+      operationId: putProjectsIdUnassign_Project_GroupProjects

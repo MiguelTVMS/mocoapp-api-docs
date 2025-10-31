@@ -137,7 +137,7 @@ paths:
       operationId: getTagsTags
     post:
       summary: POST /tags
-      description: "Create a tag:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/tags' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"name\": \"ONHOLD\",\n        \"color: \"#FFFF00\",\n        \"context\": \"Project\"\n      }'\n```\n\nThis creates a yellow tag \"ONHOLD\" for the projects area.\n\nMandatory fields are marked with a star (\\*):\n\n- **name\\*** \u2013 \"ONHOLD\"\n- **context\\*** \u2013 one of Company, Contact, Project, Deal, Purchase, Invoice, Offer or User\n- **color** \u2013 must be in hex format `#ABC123`; default is grey"
+      description: "Create a tag:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/tags' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"name\": \"ONHOLD\",\n        \"color\": \"#FFFF00\",\n        \"context\": \"Project\"\n      }'\n```\n\nThis creates a yellow tag \"ONHOLD\" for the projects area.\n\nMandatory fields are marked with a star (\\*):\n\n- **name\\*** \u2013 \"ONHOLD\"\n- **context\\*** \u2013 one of Company, Contact, Project, Deal, Purchase, Invoice, Offer or User\n- **color** \u2013 must be in hex format `#ABC123`; default is grey"
       tags:
         - Tags
       security:
@@ -146,7 +146,7 @@ paths:
             []
       responses:
         201:
-          description: "Create a tag:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/tags' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"name\": \"ONHOLD\",\n        \"color: \"#FFFF00\",\n        \"context\": \"Project\"\n      }'\n```\n\nThis creates a yellow tag \"ONHOLD\" for the projects area."
+          description: "Create a tag:\n\n```bash\ncurl -X POST \\\n  'https://{domain}.mocoapp.com/api/v1/tags' \\\n  -H 'Authorization: Token token=YOUR_API_KEY' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\n        \"name\": \"ONHOLD\",\n        \"color\": \"#FFFF00\",\n        \"context\": \"Project\"\n      }'\n```\n\nThis creates a yellow tag \"ONHOLD\" for the projects area."
           content:
             application/json:
               schema:
